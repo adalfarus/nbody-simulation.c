@@ -1,10 +1,14 @@
 #define ALLOW_EXTREME_BODIES
-#define USE_NEWTON_SIMULATION
-#define USE_GUI 1
+#define ENABLE_GUI
+
+#include <stdbool.h>
 
 #include "n_body.h"
 #include "solar_system_initial.h"
 
 int main(void) {
-	return start_simulation(solar_system);
+	init_solar_system();
+	BodySnapshot bodies[2] = {sun, earth};
+	start_simulation(solar_system, N_BODIES, true);
+	return start_simulation(bodies, 2, true);
 }

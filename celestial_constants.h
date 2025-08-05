@@ -1,10 +1,10 @@
 #ifndef CELESTIAL_CONSTANTS
 #define CELESTIAL_CONSTANTS
 
-#ifdef ALLOW_EXTREME_SIZES  // The gravitational constant only affects very very large or small bodies
+#ifdef ALLOW_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
 #define G_CONST 6.67430e-11
 #else
-#define G_CONST 1.0
+#define G_CONST 6.67430e-11 // 1.0
 #endif
 
 #define AU_METERS 1.469e11
