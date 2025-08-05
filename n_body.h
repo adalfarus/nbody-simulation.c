@@ -1,18 +1,27 @@
-#include <stdint.h>
+#ifndef N_BODY_H
+#define N_BODY_H
 
-#ifndef N_BODY
-#define N_BODY
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
 
 // How many simulation ticks per second of time
-#define TICK_SPEED (unsigned)20
+#define TICK_SPEED (uint8_t)20
 // Lowest acceptable tick speed
-#define LOW_TICK_SPEED (unsigned)20
+#define LOW_TICK_SPEED (uint8_t)20
 
-struct BodySnapshot { // Snapshot of body in time
-	uint64_t mass; // in kg
-	double[2] coordiantes; // in km
-	double[3] movement_vector;
-	unsigned diameter;  // in km
-}
+
+typedef struct { // Snapshot of body in time
+	// uint64_t mass;  // in kg
+	// uint64_t radius;  // in AU
+	double mass;
+	double radius;
+	double pos[3];  // in AU
+	double vel[3];  // AU/day
+	double acc[3];  // AU/day²
+} BodySnapshot;
+
+int start_simulation(BodySnapshot bodies[]);
 
 #endif
