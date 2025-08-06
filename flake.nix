@@ -20,7 +20,7 @@
         shellHook = ''
           echo "Entered N-body simulation dev shell (Raylib + Clang ready)"
           echo "Compiling..."
-          clang -Wall -Wextra -Werror n_body.c n_body_wrapper.c $(pkg-config --cflags --libs raylib) -lm -o nbody.elf
+          clang -Wall -Wextra -Werror nbody.c nbody_config.c nbody_wrapper.c $(pkg-config --cflags --libs raylib) -lm -o nbody.elf
           echo "Build complete. Run it with: ./nbody.elf"
         '';
       };
