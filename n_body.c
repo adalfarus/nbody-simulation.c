@@ -166,6 +166,18 @@ int start_simulation(BodySnapshot bodies[], size_t n_bodies, bool use_gui) {
 		//rlMultMatrixf((float*)&proj);
 		//rlMatrixMode(RL_MODELVIEW);
 
+		static Color colors[] = {
+			(Color){255, 204, 0, 255};    // Sun: bright yellow
+			(Color){169, 169, 169, 255};  // Mercury: dark gray
+			(Color){218, 165, 32, 255};   // Venus: golden/tan
+			(Color){100, 149, 237, 255};  // Earth: earth blue
+			(Color){188, 39, 50, 255};    // Mars: reddish
+			(Color){205, 133, 63, 255};   // Jupiter: beige/brown bands
+			(Color){210, 180, 140, 255};  // Saturn: pale gold
+			(Color){173, 216, 230, 255};  // Uranus: light blue
+			(Color){72, 61, 139, 255};    // Neptune: deep blue
+		};
+
 		for (size_t i = 0; i < n_bodies; i++) {
 			Vector3 pos = {
 				(float)bodies[i].pos[0] / POS_RENDER_SCALE,
