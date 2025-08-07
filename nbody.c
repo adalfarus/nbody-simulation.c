@@ -142,7 +142,8 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
                                 (float)bodies[i].pos[2] / POS_RENDER_SCALE
                         };
                         float radius = (float)(bodies[i].radius * 1e-9) * PLANET_RENDER_SCALE;
-                        DrawSphere(pos, radius, colors[i]);
+                        DrawSphere(pos, radius, (Color){ colors[i][0], colors[i][1], colors[i][2], 255 }
+				);
                 }
 
                 EndMode3D();
@@ -153,6 +154,7 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 	}
 
 	CloseWindow();
+	return 0;
 #else
 	(void)bodies;
 	(void)n_bodies;

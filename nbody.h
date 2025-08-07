@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "main.h"  // To get the configuration
 #include "nbody_config.h"
 
 // How many simulation ticks per second of time

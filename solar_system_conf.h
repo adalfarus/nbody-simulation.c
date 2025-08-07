@@ -124,17 +124,7 @@ static Body neptune = {
 
 static Body solar_system[9];
 
-void init_solar_system() {
-	solar_system[0] = sun;
-	solar_system[1] = mercury;
-	solar_system[2] = venus;
-	solar_system[3] = earth;
-	solar_system[4] = mars;
-	solar_system[5] = jupiter;
-	solar_system[6] = saturn;
-	solar_system[7] = uranus;
-	solar_system[8] = neptune;
-}
+extern void init_solar_system();
 
 static const size_t N_BODIES = 9;
 
