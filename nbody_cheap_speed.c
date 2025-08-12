@@ -10,45 +10,57 @@
 #include <string.h> // For memset
 
 
-void update_bodies(BodySnapshot bodies[], size_t n_bodies, double dt) {
+void update_bodies(BodySnapshot bodies[], size_t n_bodies, double tick_speed) {
 #ifdef USE_NEWTON_SIMULATION
+	//const double softening = 1e4;
+
 	// Reset all accelerations
 	for (size_t i = 0; i < n_bodies; i++) {
 		bodies[i].acc[0] = bodies[i].acc[1] = bodies[i].acc[2] = 0.0;
 	}
 
+	// Compute gravitational accelerations
+	//
+	double potential = 0.0;
+	double kinetic = 0.0;
+
 	for (size_t i = 0; i < n_bodies; i++) {
+		double v_sq = bodies[i].vel[0]*bodies[i].vel[0] +
+			      bodies[i].vel[1]*bodies[i].vel[1] +
+			      bodies[i].vel[2]*bodies[i].vel[2];
+		kinetic += 0.5 * bodies[i].mass * v_sq;
 
 		for (size_t j = 0; j < n_bodies; j++) {
 			if (i == j) continue;
 
-			VecT dx = (VecT)(bodies[j].pos[0] - bodies[i].pos[0]);
-			VecT dy = (VecT)(bodies[j].pos[1] - bodies[i].pos[1]);
-			VecT dz = (VecT)(bodies[j].pos[2] - bodies[i].pos[2]);
+			double dx = bodies[j].pos[0] - bodies[i].pos[0];
+			double dy = bodies[j].pos[1] - bodies[i].pos[1];
+			double dz = bodies[j].pos[2] - bodies[i].pos[2];
 
-			VecT r2 = dx*dx + dy*dy + dz*dz;
+			double dist_sq = dx * dx + dy * dy + dz * dz;// + softening * softening;
+			double dist = sqrt(dist_sq);
 
-			if (r2 <= (VecT)1e-20) continue; // Avoid a singularity
+			if (dist < 1e-5) continue; // Avoid a singularity
+			potential -= G_CONST * bodies[i].mass * bodies[j].mass / dist;
+			double force_mag = G_CONST * bodies[j].mass / (dist_sq * dist);  // G * m_j / |r|³
 
-			VecT r = VEC_SQRT(r2);
-			VecT inv_r3 = (VecT)(1.0) / (r2 * r);
-			VecT s = (VecT)G_CONST * (VecT)bodies[j].mass * inv_r3;
-
-			bodies[i].acc[0] += s * dx;
-			bodies[i].acc[1] += s * dy;
-			bodies[i].acc[2] += s * dz;
+			bodies[i].acc[0] += force_mag * dx;
+			bodies[i].acc[1] += force_mag * dy;
+			bodies[i].acc[2] += force_mag * dz;
 		}
 	}
 
+	printf("Energy: total=%e, kinetic=%e, potential=%e\n", kinetic + potential, kinetic, potential);
+
 	// integrate velocity and position
 	for (size_t i = 0; i < n_bodies; i++) {
-		bodies[i].vel[0] += bodies[i].acc[0] * (VecT)dt;
-		bodies[i].vel[1] += bodies[i].acc[1] * (VecT)dt;
-		bodies[i].vel[2] += bodies[i].acc[2] * (VecT)dt;
+		bodies[i].vel[0] += bodies[i].acc[0] * tick_speed;
+		bodies[i].vel[1] += bodies[i].acc[1] * tick_speed;
+		bodies[i].vel[2] += bodies[i].acc[2] * tick_speed;
 
-		bodies[i].pos[0] += (PosT)(bodies[i].vel[0] * (VecT)dt);
-		bodies[i].pos[1] += (PosT)(bodies[i].vel[1] * (VecT)dt);
-		bodies[i].pos[2] += (PosT)(bodies[i].vel[2] * (VecT)dt);
+		bodies[i].pos[0] += bodies[i].vel[0] * tick_speed;
+		bodies[i].pos[1] += bodies[i].vel[1] * tick_speed;
+		bodies[i].pos[2] += bodies[i].vel[2] * tick_speed;
 	}
 #else
 	(void)bodies;
@@ -118,7 +130,7 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 
 		// Clamp to reasonable range
 		if (time_scale < 0.01f) time_scale = 0.01f;
-		if (time_scale > 100000000.0f) time_scale = 100000000.0f;
+		if (time_scale > 1000000000.0f) time_scale = 1000000000.0f;
 
 		// UpdateCamera(&camera, CAMERA_FREE);
 
@@ -163,11 +175,11 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 		camera.target   = Vector3Add(camera.target,   move);
 
 		double frame_time = GetFrameTime();
-		tick_accumulator += frame_time * time_scale;
+		tick_accumulator += frame_time;
 
 		while (tick_accumulator >= tick_interval) {
 			// Only update if enough time has passed (n physics ticks per second)
-			update_bodies(bodies, n_bodies, tick_interval);
+			update_bodies(bodies, n_bodies, tick_interval * time_scale);
 			tick_accumulator -= tick_interval;
 		}
 
@@ -241,7 +253,7 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 
 		DrawGrid(10, 1.0f);
 
-		VecT sun_pos[3] = {bodies[0].pos[0], bodies[0].pos[1], bodies[0].pos[2]};
+		VectorT sun_pos[3] = {bodies[0].pos[0], bodies[0].pos[1], bodies[0].pos[2]};
 
 		const float invScale = 1.0f / (float)POS_RENDER_SCALE; // World -> render scale once
 		Vector3 cam_forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
@@ -290,7 +302,7 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 			//Vector3 vRender = Vector3Scale(vSim, invScale * VELOCITY_VECTOR_SCALE);
 			//Vector3 end = Vector3Add(pos, vRender);
 
-			Vector3 vRender = Vector3Scale(v_render_s, time_scale * VELOCITY_VECTOR_SCALE);  //
+			Vector3 vRender = Vector3Scale(v_render_s, VELOCITY_VECTOR_SCALE);  // time_scale
 			Vector3 end = Vector3Add(pos, vRender);
 
 			DrawLine3D(pos, end, c);
@@ -485,14 +497,14 @@ int start_simulation(Body bodies[], size_t n_bodies, bool use_gui) {
 			.mass = (Real)(bodies[i].mass * conversion_mass),
 			.radius = (Real)(bodies[i].radius * conversion_space),
 			.pos = {
-				(VecT)(bodies[i].pos[0] * conversion_space),
-				(VecT)(bodies[i].pos[1] * conversion_space),
-				(VecT)(bodies[i].pos[2] * conversion_space)
+				(VectorT)(bodies[i].pos[0] * conversion_space),
+				(VectorT)(bodies[i].pos[1] * conversion_space),
+				(VectorT)(bodies[i].pos[2] * conversion_space)
 			},
 			.vel = {
-				(VecT)(bodies[i].vel[0] * conversion_space / conversion_time),
-				(VecT)(bodies[i].vel[1] * conversion_space / conversion_time),
-				(VecT)(bodies[i].vel[2] * conversion_space / conversion_time)
+				(VectorT)(bodies[i].vel[0] * conversion_space / conversion_time),
+				(VectorT)(bodies[i].vel[1] * conversion_space / conversion_time),
+				(VectorT)(bodies[i].vel[2] * conversion_space / conversion_time)
 			},
 			.acc = { 0, 0, 0 }
 		};

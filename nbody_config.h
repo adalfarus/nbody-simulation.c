@@ -43,6 +43,11 @@ enum DataType {
 	DATA_TYPE_MIXED_8
 };
 
+#define DT_DOUBLE 1
+#define DT_FLOAT  2
+#define DT_UINT64 3
+#define DT_INT64  4
+
 extern const double mass_conversion_table[MASS_TYPE_COUNT][MASS_TYPE_COUNT];
 extern const double space_conversion_table[SPACE_TYPE_COUNT][SPACE_TYPE_COUNT];
 extern const double time_conversion_table[TIME_TYPE_COUNT][TIME_TYPE_COUNT];

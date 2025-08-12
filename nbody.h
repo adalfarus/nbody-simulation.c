@@ -8,6 +8,20 @@
 #include "main.h"  // To get the configuration
 #include "nbody_config.h"
 
+typedef struct {
+	bool enable_labels;
+} DisplayConfig;
+
+typedef struct {
+	DisplayConfig display_config;
+} SimulationConfig;
+
+typedef struct {
+	size_t step;
+	int tick_speed;
+	SimulationConfig config;
+} SimulationState;
+
 // How many simulation ticks per second of time
 #ifndef TICK_SPEED
 #define TICK_SPEED 20
