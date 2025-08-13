@@ -4,10 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-enum SimulationType {
-	SIMULATION_TYPE_NEWTON
-};
-
 enum MassType {
 	MASS_TYPE_KG,
 	MASS_TYPE_SOLAR,
@@ -34,19 +30,16 @@ enum TimeType {
 	TIME_TYPE_COUNT
 };
 
-enum DataType {
-	DATA_TYPE_DOUBLE,
-	DATA_TYPE_FLOAT,
-	DATA_TYPE_MIXED_64,
-	DATA_TYPE_MIXED_32,
-	DATA_TYPE_MIXED_16,
-	DATA_TYPE_MIXED_8
-};
-
 #define DT_DOUBLE 1
 #define DT_FLOAT  2
 #define DT_UINT64 3
 #define DT_INT64  4
+#define DT_UINT32 5
+#define DT_INT32  6
+#define DT_UINT16 7
+#define DT_INT16  8
+#define DT_UINT8  9
+#define DT_INT8   10
 
 extern const double mass_conversion_table[MASS_TYPE_COUNT][MASS_TYPE_COUNT];
 extern const double space_conversion_table[SPACE_TYPE_COUNT][SPACE_TYPE_COUNT];

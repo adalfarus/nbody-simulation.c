@@ -1,7 +1,4 @@
 #include "nbody.h"
-#include "nbody_config.h"
-#include "nbody_types.h"
-#include "celestial_constants.h"  // FOR G_CONST etc.
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -465,7 +462,23 @@ void print_bodies(BodySnapshot bodies[], size_t n_bodies) {
 	}
 }
 
+static inline double compute_sim_G(void) {
+	const double G_SI = 6.67430e-11; // m^3 kg^-1 s^-2
+
+	double L = space_conversion_table[SPACE_TYPE_M][SPACE_TYPE];        // m to SIM_LENGTH
+	double M = mass_conversion_table[MASS_TYPE_KG][MASS_TYPE];          // kg to SIM_MASS
+	double T = time_conversion_table[TIME_TYPE_SECOND][TIME_TYPE];      // s to SIM_TIME
+
+	return G_SI * (L*L*L) / (M * T*T);
+}
+
 int start_simulation(Body bodies[], size_t n_bodies, bool use_gui) {
+#ifdef SUPPORT_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
+	G_CONST_SIM = compute_sim_G();  // Convert G_CONST
+#else
+	G_CONST_SIM = 1.0;
+#endif
+
 	BodySnapshot body_snapshots[n_bodies];
 	const char* names[n_bodies];
 	uint8_t colors[n_bodies][3];

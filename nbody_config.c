@@ -25,4 +25,3 @@ const double time_conversion_table[TIME_TYPE_COUNT][TIME_TYPE_COUNT] = {
     /* MONTH*/{ 2.62974e6,43829.1,     730.484,      30.44,        30.44/7.0,   1.0,          1.0/12.0 },
     /* YEAR */{ 3.15576e7,525960.0,    8760.0,       365.25,       365.25/7.0,  12.0,         1.0 }
 };
-

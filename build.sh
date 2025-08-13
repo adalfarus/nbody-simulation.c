@@ -4,6 +4,8 @@ set -euo pipefail
 # Paths
 RAYLIB_INCLUDE="./raylib-build-static.temp/include"
 RAYLIB_LIB="./raylib-build-static.temp"
+RAYGUI_INCLUDE="./raylib-build-static.temp/include"
+RAYGUI_LIB="./raylib-build-static.temp"
 
 clang -Wall -Wextra -Werror \
   main.c nbody.c nbody_config.c solar_system_conf.c \

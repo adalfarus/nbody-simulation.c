@@ -20,18 +20,18 @@ typedef uint64_t Real;
 // Any macro functions
 
 #elif DATA_TYPE_REAL == DT_UINT32
-typedef int32_t Real;
-#define PRIReal PRIi32
+typedef uint32_t Real;
+#define PRIReal PRIu32
 // Any macro functions
 
 #elif DATA_TYPE_REAL == DT_UINT16
-typedef int16_t Real;
-#define PRIReal PRIi64
+typedef uint16_t Real;
+#define PRIReal PRIu16
 // Any macro functions
 
 #elif DATA_TYPE_REAL == DT_UINT8
-typedef int8_t Real;
-#define PRIReal PRIi64
+typedef uint8_t Real;
+#define PRIReal PRIu8
 // Any macro functions
 
 #else
@@ -58,6 +58,36 @@ typedef int64_t PosT;
 #define PRIPosT PRIi64
 // Any macro functions
 
+#elif DATA_TYPE_POS == DT_UINT32
+typedef uint32_t Real;
+#define PRIReal PRIu32
+// Any macro functions
+
+#elif DATA_TYPE_POS == DT_INT32
+typedef int32_t Real;
+#define PRIReal PRIi32
+// Any macro functions
+
+#elif DATA_TYPE_POS == DT_UINT16
+typedef uint16_t Real;
+#define PRIReal PRIu16
+// Any macro functions
+
+#elif DATA_TYPE_POS == DT_INT16
+typedef int16_t Real;
+#define PRIReal PRIi16
+// Any macro functions
+
+#elif DATA_TYPE_POS == DT_UINT8
+typedef uint8_t Real;
+#define PRIReal PRIu8
+// Any macro functions
+
+#elif DATA_TYPE_POS == DT_INT8
+typedef int8_t Real;
+#define PRIReal PRIi8
+// Any macro functions
+
 #else
 #error "No position type representation defined! Define one using DATA_TYPE_POS."
 #endif
@@ -74,18 +104,8 @@ typedef float VecT;
 // Any macro functions
 #define VEC_SQRT(x) sqrtf(x)
 
-#elif DATA_TYPE_VEC == DT_UINT64
-typedef uint64_t VecT;
-#define PRIVecT PRIu64
-// Any macro functions
-
-#elif DATA_TYPE_VEC == DT_INT64
-typedef int64_t VecT;
-#define PRIVecT PRIi64
-// Any macro functions
-
 #else
-#error "No vector type representation defined! Define one using DATA_TYPE_VEC."
+#error "No vector type representation defined! Define one using DATA_TYPE_VEC. DOUBLE, and FLOAT types are allowed."
 #endif
 
 typedef struct {
@@ -95,7 +115,7 @@ typedef struct {
 	PosT pos[3];
 
 	VecT vel[3];
-	VecT acc[3];
+	// VecT acc[3];  // Remove, this way we only store 3 VecT's for the current simulation step instead of for all cached ones
 } BodySnapshot;
 
 #endif
