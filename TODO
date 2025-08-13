@@ -1,10 +1,2 @@
-Make it so that instead of USE_NEWTON or similar you use #define INCLUDE_NEWTON. This way we could for example make it so that it uses Newton for 100 steps than resets to whatever the deterministic says. We then decouple the simulation state from the simulation type and the gui.
-
-
-Fix G_CONST
-
-Add M/S to body label
-
-
-Instead of data types make DATA_TYPE_VEC DATA_TYPE_POS and DATA_TYPE_REAL
+We then decouple the simulation state from the simulation type and the gui.
 

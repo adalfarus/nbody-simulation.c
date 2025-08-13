@@ -17,6 +17,7 @@
       buildInputs = [
         pkgs.clang
         pkgs.raylib
+        pkgs.raygui
       ];
 
       # Optional: handy flags

@@ -2,14 +2,22 @@
 set -euo pipefail
 
 # Constants
-RAYGUI_DIR=raygui.temp
-RAYGUI_URL="https://raw.githubusercontent.com/raysan5/raygui/master/src/raygui.h"
+RAYGUI_VERSION="4.0"
+RAYGUI_REPO="https://github.com/raysan5/raygui.git"
+SRC_DIR="raygui"
 
-# Create folder if it doesn't exist
-mkdir -p "$RAYGUI_DIR"
+# Clean up
+rm -f "raygui.h"
+rm -rf "$SRC_DIR"
 
-# Download raygui.h
-echo "Downloading raygui.h..."
-curl -L --fail -o "$RAYGUI_DIR/raygui.h" "$RAYGUI_URL"
+# Clone specific tag
+git clone --branch "$RAYGUI_VERSION" --depth 1 "$RAYGUI_REPO" "$SRC_DIR"
 
-echo "raygui.h downloaded to $RAYGUI_DIR/"
+# Copy the header
+cp "$SRC_DIR"/src/raygui.h ./
+
+# Clean up source
+rm -rf "$SRC_DIR"
+
+echo "raygui v$RAYGUI_VERSION download complete!"
+

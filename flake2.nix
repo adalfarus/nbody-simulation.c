@@ -15,6 +15,7 @@
           pkgs.clang
           pkgs.raylib
           pkgs.pkg-config
+          pkgs.raygui
         ];
 
         shellHook = ''

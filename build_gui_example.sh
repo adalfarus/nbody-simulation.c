@@ -6,8 +6,8 @@ RAYLIB_INCLUDE="./raylib-build-static.temp/include"
 RAYLIB_LIB="./raylib-build-static.temp"
 RAYGUI_INCLUDE="./"
 
-clang -Wall -Wextra -Werror \
-  main.c nbody.c nbody_config.c solar_system_conf.c \
+clang -Wall -Wextra \
+  raygui_example.c \
   -I"$RAYLIB_INCLUDE" \
   -I"$RAYGUI_INCLUDE" \
   "$RAYLIB_LIB/libraylib.a" \

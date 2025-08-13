@@ -16,12 +16,19 @@
 #endif
 
 typedef struct {
+        bool enable;
+        uint8_t font_size;
+} DisplayGUIConfig;
+
+typedef struct {
 	bool enable;
 	uint8_t font_size;
 	bool show_name;
 	bool show_distance_to_floating_origin;
 	bool show_speed;
-} DisplayLabelConfig;
+	bool show_diameter;
+	bool show_mass;
+} DisplayBodyLabelConfig;
 
 typedef struct {
 	bool enable;
@@ -32,7 +39,7 @@ typedef struct {
 	float fovy;
 	int projection;
 	double move_units_per_second;
-	float  mouse_sensitivity;
+	float mouse_sensitivity;
 } DisplayCameraConfig;
 
 typedef struct {
@@ -64,20 +71,22 @@ typedef struct {
 	bool enable;
 	bool changeable;
 	uint8_t target_fps;
-	DisplayLabelConfig label_config;
+	DisplayGUIConfig gui;
+	DisplayBodyLabelConfig body_labels;
 	enum SpaceType unit_type_for_labels;
 	enum TimeType time_type_for_labels;
-	DisplayCameraConfig camera_config;
+	DisplayCameraConfig camera;
 	DisplayVectorArrowConfig vec_config;
 	DisplayBodyRenderConfig body_render_config;
-	double min_body_velocity;  // 0.0 means ignore
-	double max_body_velocity;
 } DisplayConfig;
 
 typedef struct SimulationType  SimulationType;
 
 typedef struct {
-	DisplayConfig display_config;
+	DisplayConfig display;
+	
+	double min_body_velocity;  // 0.0 means ignore
+	double max_body_velocity;
 
 	// Time control
 	double base_physics_dt_sim;       // e.g. 1.0 (one sim second per physics step)
@@ -103,6 +112,7 @@ typedef struct {
 
 typedef struct {
 	size_t t_sim;  // Time point t
+	bool paused;
 
 	size_t nbodies;
 	VecT* accelerations;
