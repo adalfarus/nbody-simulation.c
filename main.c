@@ -83,3 +83,4 @@ int main(void) {
 	start_simulation(bodies, 2, 0, &cfg);
 	return start_simulation(solar_system, N_BODIES, 0, &cfg);
 }
+

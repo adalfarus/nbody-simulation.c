@@ -555,13 +555,13 @@ static double monotonic_time_s(void) {
 typedef bool (*ShouldExitFn)(void);
 typedef bool (*InitFn)(SimulationState *S);
 typedef bool (*NeedUpdateFn)(SimulationState *S);
-typedef void (*StepFn)(SimulationState *S, BodySnapshot *bodies, size_t nbodies);  // bool means either okay everything can go or its getting too slow
+typedef void (*StepFn)(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update);  // bool means either okay everything can go or its getting too slow
 typedef int (*ExitFn)(SimulationState *S);
 
 bool guiShouldExit(void);
 bool guiInit(SimulationState *S);
 bool guiNeedUpdate(SimulationState *S);
-void guiStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies);
+void guiStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update);
 int guiExit(SimulationState *S);
 
 
@@ -586,13 +586,16 @@ bool termNeedUpdate(SimulationState *S) {
 	return false;
 }
 
-void termStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies) {
+void termStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update) {
+        if (!did_update) return;
 	printf("t_sim=%zu, nbodies=%zu\n", S->t_sim, nbodies);
 	print_bodies(bodies, nbodies);
+	printf("\n");
 }
 
 int termExit(SimulationState *S) {
 	(void)S;
+	term_exit_requested = 0;
 	return 0;
 }
 
@@ -681,10 +684,6 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 		}
 	}
 
-	fprintf(stderr, "sims=%p count=%zu order=%p order_count=%zu\n",
-			(void*)cfg->simulations, cfg->simulations_count,
-			(void*)cfg->simulation_order, cfg->simulation_order_count);
-
 	S.simulation_step_fn_count = 0;
 	if (S.config.simulation_order && S.config.simulation_order_count > 0) {
 		S.simulation_step_fns = malloc(S.config.simulation_order_count * sizeof *S.simulation_step_fns);
@@ -692,13 +691,14 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 
 		for (size_t i = 0; i < S.config.simulation_order_count; i++) {
 			size_t simulation_idx = S.config.simulation_order[i];
+			
 			if (simulation_idx < S.config.simulations_count) {
 				SimulationType *sim = &S.config.simulations[simulation_idx];
 				if (sim->enabled && sim->step) {
 					S.simulation_step_fns[S.simulation_step_fn_count++] = sim->step;
 				}
 			}
-			S.simulation_step_fn_count = i;
+			S.simulation_step_fn_count = i+1;
 		}
 	} else {  // Just sims in the order of the list
 		S.simulation_step_fns = malloc(S.config.simulations_count *
@@ -747,9 +747,11 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 
 	double prev_real = monotonic_time_s();
 	const double tick_interval = 1.0 / S.config.base_physics_dt_sim;
+	bool did_update;
 
 	(void)floating_origin_idx;
 	while (!shouldExit()) {
+		did_update = false;
 		double now_real = monotonic_time_s();
 		double dt_real = now_real - prev_real;
 		prev_real = now_real;
@@ -768,28 +770,24 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 
 		while (!uiNeedUpdate(&S) && S.tick_accumulator >= tick_interval) {  // Only update if enough time has passed (n physics ticks per second)
 			// Copy last frame one forward:
-			printf("1\n");
 			BodySnapshot *next = history_clone_for_write(&S.body_snapshots, S.nbodies);  // Maybe just give pointer to current vals and where to write?
 
-			printf("1\n");
 			SimStepFn step = S.simulation_step_fns[S.simulation_step_fn_idx];
-			printf("1\n");
 			step(&S, next, S.nbodies, tick_interval * S.config.physics_tick_step_size_multiplier);
-			printf("1\n");
+			
 			history_commit(&S.body_snapshots);
-			printf("1\n");
+			
 			S.tick_accumulator -= tick_interval;
-			printf("%zu\n", S.simulation_step_fn_count);
 			S.simulation_step_fn_idx = (S.simulation_step_fn_idx + 1) % S.simulation_step_fn_count;
 			S.t_sim += 1;
+			did_update = true;
 		}
-		printf("ZU: %zu\n", S.t_sim);
 
 		size_t last = history_last_index(&S.body_snapshots);
 		BodySnapshot *current_frame = S.body_snapshots.frames
 		? S.body_snapshots.frames[last].buf
 		: starting_bodies; // fallback if no history
-		uiStep(&S, current_frame, S.nbodies);  // Maybe just give snapshot frame?
+		uiStep(&S, current_frame, S.nbodies, did_update);  // Maybe just give snapshot frame?
 	}
 
 	for (size_t i = 0; i < S.config.simulations_count; i++) {
