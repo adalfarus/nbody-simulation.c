@@ -132,9 +132,6 @@ void init_solar_system() {
         solar_system[8] = neptune;
 }
 
-
-
 const enum MassType solar_preferred_mass_type = MASS_TYPE_KG;
 const enum SpaceType solar_preferred_space_type = SPACE_TYPE_AU;
 const enum TimeType solar_preferred_time_type = TIME_TYPE_DAY;
-

@@ -1,61 +1,135 @@
 #include "nbody.h"
 
+#include <time.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
 #include <math.h>
 #include <string.h> // For memset
+#include <signal.h>
+#include <stdlib.h>  // For malloc
 
+double G_CONST_SIM;
 
-void update_bodies(BodySnapshot bodies[], size_t n_bodies, double dt) {
-#ifdef USE_NEWTON_SIMULATION
-	// Reset all accelerations
-	for (size_t i = 0; i < n_bodies; i++) {
-		bodies[i].acc[0] = bodies[i].acc[1] = bodies[i].acc[2] = 0.0;
+#ifdef INCLUDE_NEWTON_SIM
+bool sim_newton_init(SimulationState* S) {
+	(void)S;
+	return true;
+}
+bool sim_newton_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim) {
+	for (size_t i = 0; i < nbodies; ++i) {
+		S->accelerations[i][0] = (VecT)0;
+		S->accelerations[i][1] = (VecT)0;
+		S->accelerations[i][2] = (VecT)0;
 	}
 
-	for (size_t i = 0; i < n_bodies; i++) {
+	const VecT eps2 = (VecT)1e-20;    // avoid division error
+	for (size_t i = 0; i < nbodies; ++i) {
+		const VecT xi = (VecT)bodies[i].pos[0];
+		const VecT yi = (VecT)bodies[i].pos[1];
+		const VecT zi = (VecT)bodies[i].pos[2];
 
-		for (size_t j = 0; j < n_bodies; j++) {
+		for (size_t j = 0; j < nbodies; ++j) {
 			if (i == j) continue;
 
-			VecT dx = (VecT)(bodies[j].pos[0] - bodies[i].pos[0]);
-			VecT dy = (VecT)(bodies[j].pos[1] - bodies[i].pos[1]);
-			VecT dz = (VecT)(bodies[j].pos[2] - bodies[i].pos[2]);
+			const VecT dx = (VecT)bodies[j].pos[0] - xi;
+			const VecT dy = (VecT)bodies[j].pos[1] - yi;
+			const VecT dz = (VecT)bodies[j].pos[2] - zi;
 
-			VecT r2 = dx*dx + dy*dy + dz*dz;
+			const VecT r2 = dx*dx + dy*dy + dz*dz;
+			if (r2 <= eps2) continue;
 
-			if (r2 <= (VecT)1e-20) continue; // Avoid a singularity
+			const VecT r   = VEC_SQRT(r2);
+			const VecT inv_r3 = (VecT)1.0 / (r2 * r);
 
-			VecT r = VEC_SQRT(r2);
-			VecT inv_r3 = (VecT)(1.0) / (r2 * r);
-			VecT s = (VecT)G_CONST * (VecT)bodies[j].mass * inv_r3;
+			// s = G * m_j / r^3
+			const VecT s = (VecT)(G_CONST_SIM * (double)bodies[j].mass) * inv_r3;
 
-			bodies[i].acc[0] += s * dx;
-			bodies[i].acc[1] += s * dy;
-			bodies[i].acc[2] += s * dz;
+			S->accelerations[i][0] += s * dx;
+			S->accelerations[i][1] += s * dy;
+			S->accelerations[i][2] += s * dz;
 		}
 	}
+	const VecT dt = (VecT)dt_sim;
 
-	// integrate velocity and position
-	for (size_t i = 0; i < n_bodies; i++) {
-		bodies[i].vel[0] += bodies[i].acc[0] * (VecT)dt;
-		bodies[i].vel[1] += bodies[i].acc[1] * (VecT)dt;
-		bodies[i].vel[2] += bodies[i].acc[2] * (VecT)dt;
+	for (size_t i = 0; i < nbodies; ++i) {
+		bodies[i].vel[0] += S->accelerations[i][0] * dt;
+		bodies[i].vel[1] += S->accelerations[i][1] * dt;
+		bodies[i].vel[2] += S->accelerations[i][2] * dt;
 
-		bodies[i].pos[0] += (PosT)(bodies[i].vel[0] * (VecT)dt);
-		bodies[i].pos[1] += (PosT)(bodies[i].vel[1] * (VecT)dt);
-		bodies[i].pos[2] += (PosT)(bodies[i].vel[2] * (VecT)dt);
+		bodies[i].pos[0] += (PosT)(bodies[i].vel[0] * dt);
+		bodies[i].pos[1] += (PosT)(bodies[i].vel[1] * dt);
+		bodies[i].pos[2] += (PosT)(bodies[i].vel[2] * dt);
 	}
-#else
-	(void)bodies;
-	(void)n_bodies;
-	(void)tick_speed;
-#endif
+	return true;
 }
+void sim_newton_exit(SimulationState* S) {
+	(void)S;
+}
+#endif
+
+#ifdef INCLUDE_POST_NEWTONIAN_SIM
+bool sim_post_newtonian_init(SimulationState* S);
+bool sim_post_newtonian_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_post_newtonian_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_KEPLER_SIM
+bool sim_kepler_init(SimulationState* S);
+bool sim_kepler_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_kepler_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_KEPLER_PERTURBED_SIM
+bool sim_kepler_perturbed_init(SimulationState* S);
+bool sim_kepler_perturbed_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_kepler_perturbed_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_BARNES_HUT_SIM
+bool sim_barnes_hut_init(SimulationState* S);
+bool sim_barnes_hut_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_barnes_hut_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_FMM_SIM
+bool sim_fmm_init(SimulationState* S);
+bool sim_fmm_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_fmm_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_SPH_SIM
+bool sim_sph_init(SimulationState* S);
+bool sim_sph_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_sph_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_RELATIVISTIC_GEODESIC_SIM
+bool sim_relativistic_geodesic_init(SimulationState* S);
+bool sim_relativistic_geodesic_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_relativistic_geodesic_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_FULL_GR_SIM
+bool sim_full_gr_init(SimulationState* S);
+bool sim_full_gr_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_full_gr_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_EPHEMERIS_SIM
+bool sim_ephemeris_init(SimulationState* S);
+bool sim_ephemeris_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_ephemeris_exit(SimulationState* S);
+#endif
+
+#ifdef INCLUDE_X_SIM
+bool sim_x_init(SimulationState* S);
+bool sim_x_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, double dt_sim);
+void sim_x_exit(SimulationState* S);
+#endif
+
 
 #define GLSL_VERSION            330
-
 int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][3], size_t n_bodies) {
 #ifdef ENABLE_GUI
 	(void)names;  // How to display names next to planets and stars (bodies)?
@@ -455,13 +529,14 @@ int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][
 #endif
 }
 
+
+
 void print_bodies(BodySnapshot bodies[], size_t n_bodies) {
 	for (size_t i = 0; i < n_bodies; i++) {
 		BodySnapshot body = bodies[i];
-		printf("Body %zu\nMass: %f\nRadius: %f\nPos: %f/%f/%f\nVel: %f/%f/%f\n", i, body.mass, body.radius, body.pos[0], body.pos[1], body.pos[2], body.vel[0], body.vel[1], body.vel[2]);
+		printf("Body %zu\nMass: %" PRIReal "\nRadius: %" PRIReal "\nPos: %" PRIPosT "/%" PRIPosT "/%" PRIPosT "\nVel: %" PRIVecT "/%" PRIVecT "/%" PRIVecT "\n", i, body.mass, body.radius, body.pos[0], body.pos[1], body.pos[2], body.vel[0], body.vel[1], body.vel[2]);
 	}
 }
-
 static inline double compute_sim_G(void) {
 	const double G_SI = 6.67430e-11; // m^3 kg^-1 s^-2
 
@@ -471,19 +546,70 @@ static inline double compute_sim_G(void) {
 
 	return G_SI * (L*L*L) / (M * T*T);
 }
+static double monotonic_time_s(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 
-int start_simulation(Body bodies[], size_t n_bodies, bool use_gui) {
+typedef bool (*ShouldExitFn)(void);
+typedef bool (*InitFn)(SimulationState *S);
+typedef bool (*NeedUpdateFn)(SimulationState *S);
+typedef void (*StepFn)(SimulationState *S, BodySnapshot *bodies, size_t nbodies);  // bool means either okay everything can go or its getting too slow
+typedef int (*ExitFn)(SimulationState *S);
+
+bool guiShouldExit(void);
+bool guiInit(SimulationState *S);
+bool guiNeedUpdate(SimulationState *S);
+void guiStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies);
+int guiExit(SimulationState *S);
+
+
+static volatile sig_atomic_t term_exit_requested = 0;
+static void handle_sigint(int sig) {
+	(void)sig;
+	term_exit_requested = 1;
+}
+
+bool termShouldExit(void) {
+	return term_exit_requested;
+}
+
+bool termInit(SimulationState *S) {
+	(void)S;
+	signal(SIGINT, handle_sigint);
+	return true;
+}
+
+bool termNeedUpdate(SimulationState *S) {
+	(void)S;
+	return false;
+}
+
+void termStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies) {
+	printf("t_sim=%zu, nbodies=%zu\n", S->t_sim, nbodies);
+	print_bodies(bodies, nbodies);
+}
+
+int termExit(SimulationState *S) {
+	(void)S;
+	return 0;
+}
+
+int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_idx, SimulationConfig* cfg) {
 #ifdef SUPPORT_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
-	G_CONST_SIM = compute_sim_G();  // Convert G_CONST
+	double G_CONST_SIM = compute_sim_G();  // Convert G_CONST
 #else
-	G_CONST_SIM = 1.0;
+	double G_CONST_SIM = 1.0;
 #endif
+	(void)G_CONST_SIM;
 
-	BodySnapshot body_snapshots[n_bodies];
-	const char* names[n_bodies];
-	uint8_t colors[n_bodies][3];
+	const char* names[nbodies];
+	uint8_t colors[nbodies][3];
+	BodySnapshot starting_bodies[nbodies];
+	VecT accelerations[nbodies][3];
 
-	for (size_t i = 0; i < n_bodies; i++) {
+	for (size_t i = 0; i < nbodies; i++) {
 		names[i] = bodies[i].name;
 		
 		colors[i][0] = bodies[i].color[0];
@@ -494,7 +620,7 @@ int start_simulation(Body bodies[], size_t n_bodies, bool use_gui) {
 		double conversion_space = space_conversion_table[bodies[i].space_type][SPACE_TYPE];
 		double conversion_time = time_conversion_table[bodies[i].time_type][TIME_TYPE];
 
-		body_snapshots[i] = (BodySnapshot){
+		starting_bodies[i] = (BodySnapshot){
 			.mass = (Real)(bodies[i].mass * conversion_mass),
 			.radius = (Real)(bodies[i].radius * conversion_space),
 			.pos = {
@@ -507,53 +633,172 @@ int start_simulation(Body bodies[], size_t n_bodies, bool use_gui) {
 				(VecT)(bodies[i].vel[1] * conversion_space / conversion_time),
 				(VecT)(bodies[i].vel[2] * conversion_space / conversion_time)
 			},
-			.acc = { 0, 0, 0 }
+			// .acc = { 0, 0, 0 }
 		};
 	}
 
-	print_bodies(body_snapshots, n_bodies);
-	
-	if (use_gui) {
-		return gui_simulation(body_snapshots, names, colors, n_bodies);
+	print_bodies(starting_bodies, nbodies);
+
+	(void)cfg;  // Because copying is apparently "not using"
+	SimulationState S = (SimulationState) {
+		.t_sim = 0,
+		.tick_accumulator = 0.0,
+		.paused = false,
+		.body_snapshots_idx = 0,
+
+		.simulation_step_fn_idx = 0,
+		.simulation_step_fn_count = 0,
+		.simulation_step_fns = NULL,
+
+		.nbodies = nbodies,
+		.names = names,
+		.colors = colors,
+		.accelerations = accelerations,
+
+		.config = *cfg
+	};
+
+	if (S.config.keep_history && S.config.history_len > 0) {
+		S.body_snapshots.capacity = S.config.history_len;
+		S.body_snapshots.head = 0;
+		S.body_snapshots.filled = false;
+		S.body_snapshots.frames = calloc(S.config.history_len, sizeof(SnapshotFrame));
+
+		for (size_t i = 0; i < S.config.history_len; i++) {
+			S.body_snapshots.frames[i].count = nbodies;
+			S.body_snapshots.frames[i].buf = malloc(nbodies * sizeof(BodySnapshot));
+		}
 	} else {
-		printf("Headless mode is not yet supported!\n");
+		S.body_snapshots.capacity = 0;
+		S.body_snapshots.frames = NULL;
+	}
+
+	history_push(&S.body_snapshots, starting_bodies, S.nbodies);
+
+	for (size_t i = 0; i < S.config.simulations_count; i++) {
+		if (S.config.simulations[i].enabled && S.config.simulations[i].init) {
+			S.config.simulations[i].init(&S);  // Init simulation type
+		}
+	}
+
+	S.simulation_step_fn_count = 0;
+	if (S.config.simulation_order && S.config.simulation_order_count > 0) {
+		S.simulation_step_fns = malloc(S.config.simulation_order_count * sizeof *S.simulation_step_fns);
+		if (!S.simulation_step_fns) { perror("malloc"); return 1; }
+
+		for (size_t i = 0; i < S.config.simulation_order_count; i++) {
+			size_t simulation_idx = S.config.simulation_order[i];
+			if (simulation_idx < S.config.simulations_count) {
+				SimulationType *sim = &S.config.simulations[simulation_idx];
+				if (sim->enabled && sim->step) {
+					S.simulation_step_fns[S.simulation_step_fn_count++] = sim->step;
+				}
+			}
+			S.simulation_step_fn_count = i;
+		}
+	} else {  // Just sims in the order of the list
+		S.simulation_step_fns = malloc(S.config.simulations_count *
+		sizeof *S.simulation_step_fns);
+		if (!S.simulation_step_fns) { perror("malloc"); return 1; }
+
+		for (size_t i = 0; i < S.config.simulations_count; i++) {
+			SimulationType *sim = &S.config.simulations[i];
+			if (sim->enabled && sim->step) {
+				S.simulation_step_fns[S.simulation_step_fn_count++] = sim->step;
+			}
+		}
+	}
+
+	if (S.simulation_step_fn_count == 0) {
+		fprintf(stderr, "No enabled simulation step functions!\n");
 		return 1;
 	}
 
-	//Vector3 offset = {
-	//	.x = 0.0f,
-	//	.y = 200.0f,
-	//	.z = 500.0f
-	//};
+	ShouldExitFn shouldExit = NULL;
+	InitFn uiInit = NULL;
+	NeedUpdateFn uiNeedUpdate = NULL;
+	StepFn uiStep = NULL;
+	ExitFn uiExit = NULL;
 
-	//while (!WindowShouldClose()) {
-		// Adjust tick speed
-		// if (IsKeyPressed(KEY_UP)) tick_speed *= 2.0;
-		// if (IsKeyPressed(KEY_DOWN)) tick_speed *= 0.5;
-		// if (tick_speed < LOW_TICK_SPEED) tick_speed = LOW_TICK_SPEED;
+	if (S.config.display.enabled) {
+#ifdef ENABLE_GUI
+		shouldExit = guiShouldExit;
+		uiNeedUpdate = guiNeedUpdate;
+		uiInit = guiInit;
+		uiStep = guiStep;
+		uiExit = guiExit;
+#else
+		printf("To use the gui you need to enable it during compilation using #define ENABLE_GUI");
+		return 1;
+#endif
+	} else {
+		shouldExit = termShouldExit;
+		uiNeedUpdate = termNeedUpdate;
+		uiInit = termInit;
+		uiStep = termStep;
+		uiExit = termExit;
+	}
 
-		//if (IsKeyPressed(KEY_UP)) {
-		//	camera.position.y *= 0.7;
-		//	camera.position.z *= 0.7;
-		//}
-		//if (IsKeyPressed(KEY_DOWN)) {
-		//	camera.position.y *= 1.7;
-		//	camera.position.z *= 1.7;
-		//}
+	if (!uiInit(&S)) return 1;
 
-		//Vector3 sun_pos = {
-		//	(float)bodies[0].pos[0] / POS_RENDER_SCALE,
-		//	(float)bodies[0].pos[1] / POS_RENDER_SCALE,
-		//	(float)bodies[0].pos[2] / POS_RENDER_SCALE
-		//};
+	double prev_real = monotonic_time_s();
+	const double tick_interval = 1.0 / S.config.base_physics_dt_sim;
 
-		//(void)offset;
-		//(void)sun_pos;
+	(void)floating_origin_idx;
+	while (!shouldExit()) {
+		double now_real = monotonic_time_s();
+		double dt_real = now_real - prev_real;
+		prev_real = now_real;
 
-		//camera.position = Vector3Add(sun_pos, offset);
-		//camera.target = sun_pos;
-		// printf("%e\n", G_CONST);
-	//}
+		// clamp big pauses (alt-tab, breakpoint)
+		if (dt_real > 0.5) dt_real = 0.5;
+		if (dt_real < 0.0) dt_real = 0.0;
+
+		if (S.config.time_scale < S.config.time_scale_min) S.config.time_scale = S.config.time_scale_min;
+		if (S.config.time_scale > S.config.time_scale_max) S.config.time_scale = S.config.time_scale_max;
+		double dt_sim = dt_real * S.config.time_scale;
+
+		S.tick_accumulator += dt_sim;
+		if (S.tick_accumulator > S.config.max_accumulator_backlog) S.tick_accumulator = S.config.max_accumulator_backlog;
+
+
+		while (!uiNeedUpdate(&S) && S.tick_accumulator >= tick_interval) {  // Only update if enough time has passed (n physics ticks per second)
+			// Copy last frame one forward:
+			printf("1\n");
+			BodySnapshot *next = history_clone_for_write(&S.body_snapshots, S.nbodies);  // Maybe just give pointer to current vals and where to write?
+
+			printf("1\n");
+			SimStepFn step = S.simulation_step_fns[S.simulation_step_fn_idx];
+			printf("1\n");
+			step(&S, next, S.nbodies, tick_interval * S.config.physics_tick_step_size_multiplier);
+			printf("1\n");
+			history_commit(&S.body_snapshots);
+			printf("1\n");
+			S.tick_accumulator -= tick_interval;
+			printf("%zu\n", S.simulation_step_fn_count);
+			S.simulation_step_fn_idx = (S.simulation_step_fn_idx + 1) % S.simulation_step_fn_count;
+			S.t_sim += 1;
+		}
+		printf("ZU: %zu\n", S.t_sim);
+
+		size_t last = history_last_index(&S.body_snapshots);
+		BodySnapshot *current_frame = S.body_snapshots.frames
+		? S.body_snapshots.frames[last].buf
+		: starting_bodies; // fallback if no history
+		uiStep(&S, current_frame, S.nbodies);  // Maybe just give snapshot frame?
+	}
+
+	for (size_t i = 0; i < S.config.simulations_count; i++) {
+		if (S.config.simulations[i].enabled && S.config.simulations[i].exit) {
+			S.config.simulations[i].exit(&S);  // Init simulation type
+		}
+	}
+
+	if (S.body_snapshots.frames) {
+		for (size_t i = 0; i < S.body_snapshots.capacity; ++i) free(S.body_snapshots.frames[i].buf);
+		free(S.body_snapshots.frames);
+	}
+	free(S.simulation_step_fns);
+
+	return uiExit(&S);
 }
-
-
