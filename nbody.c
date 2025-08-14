@@ -583,12 +583,30 @@ bool termInit(SimulationState *S) {
 
 bool termNeedUpdate(SimulationState *S) {
 	(void)S;
+	static double prev_real = 0.0;
+	static bool initialized = false;
+
+	double now_real = monotonic_time_s();  // e.g., returns time in seconds (double)
+
+	if (!initialized) {
+		prev_real = now_real;
+		initialized = true;
+		return false;
+	}
+
+	double dt_real = now_real - prev_real;
+
+	if (dt_real >= 1.0) {
+		prev_real = now_real;
+		return true;
+	}
+
 	return false;
 }
 
 void termStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update) {
         if (!did_update) return;
-	printf("t_sim=%zu, nbodies=%zu\n", S->t_sim, nbodies);
+	printf("t_sim=%zu, nbodies=%zu, loss=%lf%%\n", S->t_sim, nbodies, S->tick_accumulator / 1.0 / S->config.base_physics_dt_sim * S->config.time_scale);
 	print_bodies(bodies, nbodies);
 	printf("\n");
 }
@@ -750,7 +768,7 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 	bool did_update;
 
 	(void)floating_origin_idx;
-	while (!shouldExit()) {
+	while (!shouldExit()) {  //// FLOATING ORIGIN
 		did_update = false;
 		double now_real = monotonic_time_s();
 		double dt_real = now_real - prev_real;

@@ -60,7 +60,7 @@ int main(void) {
 		.max_body_velocity = 1000000.0,
 
 		.base_physics_dt_sim = 1.0,
-		.time_scale = 1.0,
+		.time_scale = 1e4,//1.0,
 		.time_scale_min = 0.01,
 		.time_scale_max = 1e8,
 
