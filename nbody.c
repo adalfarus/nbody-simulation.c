@@ -681,6 +681,10 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 		}
 	}
 
+	fprintf(stderr, "sims=%p count=%zu order=%p order_count=%zu\n",
+			(void*)cfg->simulations, cfg->simulations_count,
+			(void*)cfg->simulation_order, cfg->simulation_order_count);
+
 	S.simulation_step_fn_count = 0;
 	if (S.config.simulation_order && S.config.simulation_order_count > 0) {
 		S.simulation_step_fns = malloc(S.config.simulation_order_count * sizeof *S.simulation_step_fns);
