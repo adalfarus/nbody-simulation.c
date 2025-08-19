@@ -1,5 +1,7 @@
 # NBody-Simuation.c
 
+<img src="screenshot000.png" width="100%" />
+
 ## Explaination
 
 This is an nbody simulation written in C. It was made to be very modular, so it can run all the way from the Solar System to a dust particle simulation.
