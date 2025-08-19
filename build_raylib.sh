@@ -20,8 +20,8 @@ mkdir build && cd build
 # Build statically with large near/far clipping distances
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DCMAKE_C_FLAGS="-DDEFAULT_NEAR_CULL_DISTANCE=1000.0 -DDEFAULT_FAR_CULL_DISTANCE=1.0e+12"
+  -DBUILD_SHARED_LIBS=OFF # \
+  # -DCMAKE_C_FLAGS="-DDEFAULT_NEAR_CULL_DISTANCE=1000.0 -DDEFAULT_FAR_CULL_DISTANCE=1.0e+12"
 
 make -j
 

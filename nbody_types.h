@@ -6,7 +6,7 @@
 
 #if DATA_TYPE_REAL == DT_DOUBLE
 typedef double Real;
-#define PRIReal "lf"
+#define PRIReal ".17g"
 // Any macro functions
 
 #elif DATA_TYPE_REAL == DT_FLOAT
@@ -40,7 +40,7 @@ typedef uint8_t Real;
 
 #if DATA_TYPE_POS == DT_DOUBLE
 typedef double PosT;
-#define PRIPosT "lf"
+#define PRIPosT ".17g"
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_FLOAT
@@ -59,33 +59,33 @@ typedef int64_t PosT;
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_UINT32
-typedef uint32_t Real;
-#define PRIReal PRIu32
+typedef uint32_t PosT;
+#define PRIPosT PRIu32
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_INT32
-typedef int32_t Real;
-#define PRIReal PRIi32
+typedef int32_t PosT;
+#define PRIPosT PRIi32
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_UINT16
-typedef uint16_t Real;
-#define PRIReal PRIu16
+typedef uint16_t PosT;
+#define PRIPosT PRIu16
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_INT16
-typedef int16_t Real;
-#define PRIReal PRIi16
+typedef int16_t PosT;
+#define PRIPosT PRIi16
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_UINT8
-typedef uint8_t Real;
-#define PRIReal PRIu8
+typedef uint8_t PosT;
+#define PRIPosT PRIu8
 // Any macro functions
 
 #elif DATA_TYPE_POS == DT_INT8
-typedef int8_t Real;
-#define PRIReal PRIi8
+typedef int8_t PosT;
+#define PRIPosT PRIi8
 // Any macro functions
 
 #else
@@ -94,7 +94,7 @@ typedef int8_t Real;
 
 #if DATA_TYPE_VEC == DT_DOUBLE
 typedef double VecT;
-#define PRIVecT "lf"
+#define PRIVecT ".17g"
 // Any macro functions
 #define VEC_SQRT(x) sqrt(x)
 

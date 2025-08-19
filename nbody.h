@@ -17,16 +17,18 @@
 #endif
 
 typedef struct {
-        bool enabled;
-        uint8_t font_size;
-} DisplayGUIConfig;
+	bool enabled;
+	uint8_t font_size;
+} DisplayUIConfig;
 
 typedef struct {
 	bool enabled;
 	uint8_t font_size;
 	bool show_name;
+	bool show_distance_to_camera;
 	bool show_distance_to_floating_origin;
 	bool show_speed;
+	bool show_cardinal_direction;
 	bool show_diameter;
 	bool show_mass;
 } DisplayBodyLabelConfig;
@@ -34,19 +36,22 @@ typedef struct {
 typedef struct {
 	bool enabled;
 	bool changeable;
-	double initial_position[3];
-	double initial_target[3];
+	float initial_position[3];
+	float initial_target[3];
 	float up[3];
 	float fovy;
 	int projection;
-	double move_units_per_second;
+	float move_units_per_second;
+	float speed_boost_mult;
+	float zoom_units_per_second;
 	float mouse_sensitivity;
 } DisplayCameraConfig;
 
 typedef struct {
 	bool enabled;
 	float exaggeration_multiplier;
-	float max_length_render;
+	float max_scalar;
+	float arrow_head_size_percent;
 } DisplayVectorArrowConfig;
 
 typedef enum {
@@ -63,22 +68,42 @@ typedef struct {
 } DisplayBodyRenderConfig;
 
 typedef struct {
-	bool enabled;
 	Operation operation;  // So you don't have to create small decimals or large numbers
 	double space_render_scale;
 } DisplaySpaceRenderConfig;
 
 typedef struct {
 	bool enabled;
-	bool changeable;
+	const char* texture;
+} DisplaySkyboxConfig;
+
+typedef struct {
+	bool enabled;
+	bool changeable;  // Remove?
+	bool resizable;
+	uint16_t window_width;
+	uint16_t window_height;
+	const char* window_title;
 	uint8_t target_fps;
-	DisplayGUIConfig gui;
+	DisplayUIConfig ui;
 	DisplayBodyLabelConfig body_labels;
 	enum SpaceType unit_type_for_labels;
 	enum TimeType time_type_for_labels;
 	DisplayCameraConfig camera;
-	DisplayVectorArrowConfig vec_config;
-	DisplayBodyRenderConfig body_render_config;
+	DisplayVectorArrowConfig vector_arrows;
+	DisplayBodyRenderConfig body_rendering;
+	DisplaySpaceRenderConfig space_rendering;
+
+	DisplaySkyboxConfig skybox;
+
+	//double space_render_scale;
+
+	int grid_size;
+	float grid_density;
+
+	uint64_t max_labels;
+
+	bool disable_backface_culling;
 } DisplayConfig;
 
 typedef struct SimulationType  SimulationType;
@@ -166,6 +191,8 @@ struct SimulationState {
 	size_t body_snapshots_idx;
 	size_t simulation_step_fn_idx;
 	size_t simulation_step_fn_count;
+
+	double last_ui_update;
 
 	SimStepFn* simulation_step_fns;
 

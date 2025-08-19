@@ -2,4 +2,4 @@
 *.temp/
 flake.lock
 *.swp
-
+.env/

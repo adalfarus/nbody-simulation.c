@@ -9,9 +9,30 @@
 #include <signal.h>
 #include <stdlib.h>  // For malloc
 
+#ifdef ENABLE_GUI
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+#endif
+
 double G_CONST_SIM;
 
+#ifndef MASS_TYPE
+#error "MASS_TYPE must be defined"
+#endif
+#ifndef SPACE_TYPE
+#error "SPACE_TYPE must be defined"
+#endif
+#ifndef TIME_TYPE
+#error "TIME_TYPE must be defined"
+#endif
+
 #ifdef INCLUDE_NEWTON_SIM
+
+// dt: SIM_T -> s
+static inline double dt_SIM_to_SECOND(double dt_sim) {
+	return dt_sim * time_conversion_table[TIME_TYPE_SECOND][TIME_TYPE];
+}
+
 bool sim_newton_init(SimulationState* S) {
 	(void)S;
 	return true;
@@ -53,13 +74,13 @@ bool sim_newton_step(SimulationState* S, BodySnapshot *bodies, size_t nbodies, d
 	const VecT dt = (VecT)dt_sim;
 
 	for (size_t i = 0; i < nbodies; ++i) {
-		bodies[i].vel[0] += S->accelerations[i][0] * dt;
-		bodies[i].vel[1] += S->accelerations[i][1] * dt;
-		bodies[i].vel[2] += S->accelerations[i][2] * dt;
+		bodies[i].vel[0] += S->accelerations[i][0] * dt_SIM_to_SECOND(dt);
+		bodies[i].vel[1] += S->accelerations[i][1] * dt_SIM_to_SECOND(dt);
+		bodies[i].vel[2] += S->accelerations[i][2] * dt_SIM_to_SECOND(dt);
 
-		bodies[i].pos[0] += (PosT)(bodies[i].vel[0] * dt);
-		bodies[i].pos[1] += (PosT)(bodies[i].vel[1] * dt);
-		bodies[i].pos[2] += (PosT)(bodies[i].vel[2] * dt);
+		bodies[i].pos[0] += (PosT)(bodies[i].vel[0] * dt_SIM_to_SECOND(dt));
+		bodies[i].pos[1] += (PosT)(bodies[i].vel[1] * dt_SIM_to_SECOND(dt));
+		bodies[i].pos[2] += (PosT)(bodies[i].vel[2] * dt_SIM_to_SECOND(dt));
 	}
 	return true;
 }
@@ -131,7 +152,7 @@ void sim_x_exit(SimulationState* S);
 
 #define GLSL_VERSION            330
 int gui_simulation(BodySnapshot bodies[], const char* names[], uint8_t colors[][3], size_t n_bodies) {
-#ifdef ENABLE_GUI
+#ifdef ENABLE_GUI_OLD
 	(void)names;  // How to display names next to planets and stars (bodies)?
 
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
@@ -558,12 +579,568 @@ typedef bool (*NeedUpdateFn)(SimulationState *S);
 typedef void (*StepFn)(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update);  // bool means either okay everything can go or its getting too slow
 typedef int (*ExitFn)(SimulationState *S);
 
-bool guiShouldExit(void);
-bool guiInit(SimulationState *S);
-bool guiNeedUpdate(SimulationState *S);
-void guiStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update);
-int guiExit(SimulationState *S);
+#ifdef ENABLE_GUI
+#define GLSL_VERSION 330
+Camera3D camera;
+Model skybox;
+bool cursorEnabled;
+bool exitWindow;
 
+typedef struct {
+	int x, y;
+	int fs, tw;
+	Color text_color, bg_color;
+	char text[96];   // owned storage for label text
+} LabelInfo;
+
+bool guiShouldExit(void) {
+	return exitWindow || WindowShouldClose();
+}
+bool guiInit(SimulationState *S) {
+	if (S->config.display.resizable) {
+		SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+	}
+	InitWindow(S->config.display.window_width, S->config.display.window_height, S->config.display.window_title);
+	SetExitKey(0);  // Disable ESC->Exit
+	SetTargetFPS(S->config.display.target_fps);
+
+	GuiSetStyle(DEFAULT, TEXT_SIZE, S->config.display.ui.font_size);
+
+	cursorEnabled = true;
+	exitWindow = false;
+
+	if (S->config.display.skybox.enabled) {
+		// FROM: https://www.raylib.com/examples/models/loader.html?name=models_skybox
+		// Load skybox model
+		Mesh cube = GenMeshCube(1.0f, 1.0f, 1.0f);
+		skybox = LoadModelFromMesh(cube);
+
+		// Load skybox shader and set required locations
+		// NOTE: Some locations are automatically set at shader loading
+		skybox.materials[0].shader = LoadShader(TextFormat("resources/shaders/glsl%i/skybox.vs", GLSL_VERSION),
+												TextFormat("resources/shaders/glsl%i/skybox.fs", GLSL_VERSION));
+
+		SetShaderValue(skybox.materials[0].shader, GetShaderLocation(skybox.materials[0].shader, "environmentMap"), (int[1]){ MATERIAL_MAP_CUBEMAP }, SHADER_UNIFORM_INT);
+		SetShaderValue(skybox.materials[0].shader, GetShaderLocation(skybox.materials[0].shader, "doGamma"), (int[1]) { 0 }, SHADER_UNIFORM_INT);
+		SetShaderValue(skybox.materials[0].shader, GetShaderLocation(skybox.materials[0].shader, "vflipped"), (int[1]){ 0 }, SHADER_UNIFORM_INT);
+
+		// Load cubemap shader and setup required shader locations
+		Shader shdrCubemap = LoadShader(TextFormat("resources/shaders/glsl%i/cubemap.vs", GLSL_VERSION),
+										TextFormat("resources/shaders/glsl%i/cubemap.fs", GLSL_VERSION));
+
+		SetShaderValue(shdrCubemap, GetShaderLocation(shdrCubemap, "equirectangularMap"), (int[1]){ 0 }, SHADER_UNIFORM_INT);
+
+		Image img = LoadImage(S->config.display.skybox.texture);
+		skybox.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture = LoadTextureCubemap(img, CUBEMAP_LAYOUT_AUTO_DETECT);    // CUBEMAP_LAYOUT_PANORAMA
+		UnloadImage(img);
+	}
+
+	camera = (Camera3D) {
+		.position = {
+			S->config.display.camera.initial_position[0],
+			S->config.display.camera.initial_position[1],
+			S->config.display.camera.initial_position[2]
+		},
+		.target = {
+			S->config.display.camera.initial_target[0],
+			S->config.display.camera.initial_target[1],
+			S->config.display.camera.initial_target[2]
+		},
+		.up = {
+			S->config.display.camera.up[0],
+			S->config.display.camera.up[1],
+			S->config.display.camera.up[2]
+		},
+		.fovy = S->config.display.camera.fovy,
+		.projection = S->config.display.camera.projection
+	};
+
+	if (S->config.display.disable_backface_culling) {
+		rlDisableBackfaceCulling();
+	}
+	return true;  // Everything worked
+}
+bool guiNeedUpdate(SimulationState *S) {
+	double now_real = monotonic_time_s();
+	double dt_real = now_real - S->last_ui_update;
+
+	if (dt_real >= 1.0 / S->config.display.target_fps) {  // s decimal per frame
+		return true;
+	}
+	return false;
+}
+void updateCamera(SimulationState *S) {
+	if (!S->config.display.camera.changeable) return;
+	float dt = GetFrameTime();
+
+	// mouse-look
+	Vector2 md;
+	if (!cursorEnabled) {
+		md = GetMouseDelta();
+	} else {
+		md = (Vector2) { 0.0, 0.0 };
+	}
+	float yaw   = -md.x * S->config.display.camera.mouse_sensitivity;
+	float pitch = -md.y * S->config.display.camera.mouse_sensitivity;
+
+	Vector3 f = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+	Matrix  yawM   = MatrixRotateY(yaw);
+	Vector3 fYaw   = Vector3Transform(f, yawM);
+	Vector3 right  = Vector3Normalize(Vector3CrossProduct(fYaw, camera.up));
+	Matrix  pitchM = MatrixRotate(right, pitch);
+
+	// clamp pitch a bit to avoid flip
+	Vector3 fNew = Vector3Transform(fYaw, pitchM);
+	camera.target = Vector3Add(camera.position, fNew);
+
+	// movement (WASDQE)
+	float baseSpeed = S->config.display.camera.move_units_per_second; // render units per second
+	float boost = IsKeyDown(KEY_LEFT_SHIFT) ? S->config.display.camera.speed_boost_mult : 1.0f;
+	float speed = baseSpeed * boost;
+
+	Vector3 move = {0};
+	if (IsKeyDown(KEY_W)) move = Vector3Add(move, Vector3Scale(fNew,   speed*dt));
+	if (IsKeyDown(KEY_S)) move = Vector3Add(move, Vector3Scale(fNew,  -speed*dt));
+	if (IsKeyDown(KEY_D)) move = Vector3Add(move, Vector3Scale(right,  speed*dt));
+	if (IsKeyDown(KEY_A)) move = Vector3Add(move, Vector3Scale(right, -speed*dt));
+	if (IsKeyDown(KEY_E)) move = Vector3Add(move, Vector3Scale(camera.up,  speed*dt));
+	if (IsKeyDown(KEY_Q)) move = Vector3Add(move, Vector3Scale(camera.up, -speed*dt));
+
+	// mouse wheel zoom
+	float zoomSpeed = S->config.display.camera.zoom_units_per_second;  // render units per wheel step
+	float wheel = GetMouseWheelMove();
+	if (wheel != 0.0f) {
+		S->config.display.camera.move_units_per_second += wheel * zoomSpeed * dt;
+		//move = Vector3Add(move, Vector3Scale(fNew, wheel * zoomSpeed * dt));
+	}
+
+	if (S->config.display.camera.move_units_per_second < 0.0) S->config.display.camera.move_units_per_second = 0.0;
+
+	camera.position = Vector3Add(camera.position, move);
+	camera.target = Vector3Add(camera.target,   move);
+}
+void drawBar(const char* text, double *value_to_mod, float centerY, float centerX, float bw, float bh, float gap, int font_size) {
+	// Compute center label
+	char label[64];
+	snprintf(label, sizeof(label), "%s %.2fx", text, *value_to_mod);
+	int labelW = MeasureText(label, font_size);
+
+	int prevFontSize = GuiGetStyle(DEFAULT, TEXT_SIZE);
+	GuiSetStyle(DEFAULT, TEXT_SIZE, font_size);
+
+	// Left buttons
+	Rectangle bL3 = { centerX - labelW / 2.0f - gap - bw, centerY, bw, bh };
+	Rectangle bL2 = { bL3.x - gap - bw, centerY, bw, bh };
+	Rectangle bL1 = { bL2.x - gap - bw, centerY, bw, bh };
+
+	// Right buttons
+	Rectangle bR1 = { centerX + labelW / 2.0f + gap, centerY, bw, bh };
+	Rectangle bR2 = { bR1.x + gap + bw, centerY, bw, bh };
+	Rectangle bR3 = { bR2.x + gap + bw, centerY, bw, bh };
+
+	if (GuiButton(bL1, "<<<")) *value_to_mod *= 0.125f;   // /8
+	if (GuiButton(bL2, "<<"))  *value_to_mod *= 0.25f;    // /4
+	if (GuiButton(bL3, "<"))   *value_to_mod *= 0.5f;     // /2
+
+	if (GuiButton(bR1, ">"))   *value_to_mod *= 2.0f;
+	if (GuiButton(bR2, ">>"))  *value_to_mod *= 4.0f;
+	if (GuiButton(bR3, ">>>")) *value_to_mod *= 8.0f;
+
+	// Center label
+	GuiLabel((Rectangle){ centerX - labelW / 2.0f, centerY + roundf(4 * 2 / font_size), (float)labelW, bh }, label);
+	//GuiLabel((Rectangle){ centerX - labelW / 2.0f, centerY + bh/2 - font_size/2, (float)labelW, bh }, label);
+	GuiSetStyle(DEFAULT, TEXT_SIZE, prevFontSize);
+}
+void drawBarF(const char* text, float *value_to_mod, float centerY, float centerX, float bw, float bh, float gap, int font_size) {
+	// Compute center label
+	char label[64];
+	snprintf(label, sizeof(label), "%s %.2fx", text, *value_to_mod);
+	int labelW = MeasureText(label, font_size);
+
+	int prevFontSize = GuiGetStyle(DEFAULT, TEXT_SIZE);
+	GuiSetStyle(DEFAULT, TEXT_SIZE, font_size);
+
+	// Left buttons
+	Rectangle bL3 = { centerX - labelW / 2.0f - gap - bw, centerY, bw, bh };
+	Rectangle bL2 = { bL3.x - gap - bw, centerY, bw, bh };
+	Rectangle bL1 = { bL2.x - gap - bw, centerY, bw, bh };
+
+	// Right buttons
+	Rectangle bR1 = { centerX + labelW / 2.0f + gap, centerY, bw, bh };
+	Rectangle bR2 = { bR1.x + gap + bw, centerY, bw, bh };
+	Rectangle bR3 = { bR2.x + gap + bw, centerY, bw, bh };
+
+	if (GuiButton(bL1, "<<<")) *value_to_mod *= 0.125f;   // /8
+	if (GuiButton(bL2, "<<"))  *value_to_mod *= 0.25f;    // /4
+	if (GuiButton(bL3, "<"))   *value_to_mod *= 0.5f;     // /2
+
+	if (GuiButton(bR1, ">"))   *value_to_mod *= 2.0f;
+	if (GuiButton(bR2, ">>"))  *value_to_mod *= 4.0f;
+	if (GuiButton(bR3, ">>>")) *value_to_mod *= 8.0f;
+
+	// Center label
+	GuiLabel((Rectangle){ centerX - labelW / 2.0f, centerY + roundf(4 * 2 / font_size), (float)labelW, bh }, label);
+	//GuiLabel((Rectangle){ centerX - labelW / 2.0f, centerY + bh/2 - font_size/2, (float)labelW, bh }, label);
+	GuiSetStyle(DEFAULT, TEXT_SIZE, prevFontSize);
+}
+void drawUI(SimulationState *S) {  // Add other UI
+	if (!S->config.display.ui.enabled) return;
+
+	// ======= In-game UI (bottom bar) =======
+	int sw = GetScreenWidth();
+	int sh = GetScreenHeight();
+
+	DrawText(TextFormat("Base Physics DT-Sim: %.2f", (float)S->config.base_physics_dt_sim), 10, 30, 20, RAYWHITE);
+	//DrawText(TextFormat("Time Scale: %.2fx", (float)S->config.time_scale), 10, 30, 20, RAYWHITE);
+
+	{
+		int font_size = 10;
+		float s = (float)font_size / 18;
+		float centerY = 50;
+		float centerX = 190;
+		float bw = roundf(64 * s);
+		float bh = roundf(34 * s);
+		float gap = roundf(8 * s);
+
+		drawBar("Body Scale:", &S->config.display.body_rendering.body_render_scale, centerY, centerX, bw, bh, gap, font_size);
+		drawBar("Pos Scale:", &S->config.display.space_rendering.space_render_scale, centerY + 20, centerX, bw, bh, gap, font_size);
+		drawBarF("Camera Speed:", &S->config.display.camera.move_units_per_second, centerY + 40, centerX, bw, bh, gap, font_size);
+	}
+
+	//DrawText(TextFormat("Body Scale: %.9f", (float)S->config.display.body_rendering.body_render_scale), 10, 50, 20, RAYWHITE);
+	//DrawText(TextFormat("Pos Scale: %.2f", (float)S->config.display.space_rendering.space_render_scale), 10, 70, 20, RAYWHITE);
+
+	// Compass
+	Vector2 cc = { GetScreenWidth()*0.5f, 26.0f };
+	DrawLine(cc.x-30, cc.y, cc.x+30, cc.y, GRAY);
+	DrawLine(cc.x, cc.y-30, cc.x, cc.y+30, GRAY);
+	DrawText("N", (int)cc.x-5, (int)(cc.y-30-14), 14, GRAY);
+	DrawText("S", (int)cc.x-4, (int)(cc.y+30+2), 14, GRAY);
+	DrawText("W", (int)(cc.x-30-10), (int)cc.y-7, 14, GRAY);
+	DrawText("E", (int)(cc.x+30+4), (int)cc.y-7, 14, GRAY);
+
+	// Layout helpers
+	float x = 20;
+	float y = sh - 100;
+
+	// --- "Text on left, checkbox on right" triplet ---
+	const char* txtA = "Show names";
+	int twA = MeasureText(txtA, GuiGetStyle(DEFAULT, TEXT_SIZE));
+	DrawText(txtA, (int)x, (int)y + 6, GuiGetStyle(DEFAULT, TEXT_SIZE), RAYWHITE);
+	GuiCheckBox((Rectangle){ x + twA + 12, y, 24, 24 }, "", &S->config.display.body_labels.enabled);
+
+	//const char* txtB = "Show distance";
+	//int twB = MeasureText(txtB, GuiGetStyle(DEFAULT, TEXT_SIZE));
+	//float yB = y + 34;
+	//DrawText(txtB, (int)x, (int)yB + 6, GuiGetStyle(DEFAULT, TEXT_SIZE), RAYWHITE);
+	//GuiCheckBox((Rectangle){ x + twB + 12, yB, 24, 24 }, "", &chkB);
+
+	const char* txtC = "Show speed vectors";
+	int twC = MeasureText(txtC, GuiGetStyle(DEFAULT, TEXT_SIZE));
+	float yC = y + 68;
+	DrawText(txtC, (int)x, (int)yC + 6, GuiGetStyle(DEFAULT, TEXT_SIZE), RAYWHITE);
+	GuiCheckBox((Rectangle){ x + twC + 12, yC, 24, 24 }, "", &S->config.display.vector_arrows.enabled);
+
+	// --- Center strip: 3 buttons on each side around a label ---
+	int font_size = 16;
+	float s = (float)font_size / 18;
+	float centerY = y + 20;
+	float centerX = sw * 0.5f;
+	float bw = roundf(64 * s);
+	float bh = roundf(34 * s);
+	float gap = roundf(8 * s);
+
+	drawBar("Time Scale:", &S->config.time_scale, centerY, centerX, bw, bh, gap, font_size);
+	drawBar("Step Size:", &S->config.physics_tick_step_size_multiplier, centerY + 40, centerX, bw, bh, gap, font_size);
+
+	// Compute center label
+	//char label[64];
+	//snprintf(label, sizeof(label), "Time Scale: %.2fx", S->config.time_scale);
+	//int labelW = MeasureText(label, GuiGetStyle(DEFAULT, TEXT_SIZE));
+	//float centerX = sw * 0.5f;
+
+	// Left buttons
+	//Rectangle bL3 = { centerX - labelW / 2.0f - gap - bw, centerY, bw, bh };
+	//Rectangle bL2 = { bL3.x - gap - bw, centerY, bw, bh };
+	//Rectangle bL1 = { bL2.x - gap - bw, centerY, bw, bh };
+
+	// Right buttons
+	//Rectangle bR1 = { centerX + labelW / 2.0f + gap, centerY, bw, bh };
+	//Rectangle bR2 = { bR1.x + gap + bw, centerY, bw, bh };
+	//Rectangle bR3 = { bR2.x + gap + bw, centerY, bw, bh };
+
+	//if (GuiButton(bL1, "<<<")) S->config.time_scale *= 0.125f;   // /8
+	//if (GuiButton(bL2, "<<"))  S->config.time_scale *= 0.25f;    // /4
+	//if (GuiButton(bL3, "<"))   S->config.time_scale *= 0.5f;     // /2
+
+	//if (GuiButton(bR1, ">"))   S->config.time_scale *= 2.0f;
+	//if (GuiButton(bR2, ">>"))  S->config.time_scale *= 4.0f;
+	//if (GuiButton(bR3, ">>>")) S->config.time_scale *= 8.0f;
+
+	// Center label
+	//GuiLabel((Rectangle){ centerX - labelW / 2.0f, centerY + 4, (float)labelW, bh }, label);
+
+	// ======= Pause overlay =======
+	if (S->paused)
+	{
+		// Dim background
+		DrawRectangle(0, 0, sw, sh, (Color){0, 0, 0, 180});
+
+		const char* title = "Paused";
+		int titleW = MeasureText(title, 32);
+		DrawText(title, (sw - titleW) / 2, sh / 2 - 140, 32, RAYWHITE);
+
+		float mw = 320, mh = 220;
+		Rectangle menu = { (sw - mw) / 2.0f, (sh - mh) / 2.0f, mw, mh };
+		GuiPanel(menu, "");
+
+		float bx = menu.x + 40;
+		float by = menu.y + 56;
+		float bwm = menu.width - 80;
+		float bH = 42;
+
+		if (GuiButton((Rectangle){ bx, by, bwm, bH }, "Resume [ESC]")) S->paused = false;
+		by += bH + 12;
+		if (GuiButton((Rectangle){ bx, by, bwm, bH }, "Settings")) {
+			// open your settings screen…
+		}
+		by += bH + 12;
+		if (GuiButton((Rectangle){ bx, by, bwm, bH }, "Quit")) exitWindow = true;
+
+		if (!cursorEnabled)
+			EnableCursor();
+		cursorEnabled = true;
+	}
+
+	// Small hint
+	DrawText("Hold RMB to look around (cursor captured). Press ESC for pause menu.",
+			 10, 10, 18, (Color){200, 200, 200, 255});
+}
+void guiStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update) {
+	if (!did_update && !guiNeedUpdate(S)) return;
+	//if (IsKeyPressed(KEY_UP)) time_scale *= 2.0f;  // use gui
+	//if (IsKeyPressed(KEY_DOWN)) time_scale *= 0.5f;
+
+	if (IsKeyPressed(KEY_ESCAPE))
+		S->paused = !S->paused;
+
+	// Cursor policy: capture only while RMB is held and NOT paused
+	if (!S->paused && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+		if (cursorEnabled)
+			DisableCursor();
+		cursorEnabled = false;
+	} else if (!S->paused && !cursorEnabled) {
+		EnableCursor();
+		cursorEnabled = true;
+	}
+
+	updateCamera(S);
+
+	// Drawing
+	BeginDrawing();
+	ClearBackground(BLANK);
+
+	if (S->config.display.camera.enabled) {
+		BeginMode3D(camera);
+
+		if (S->config.display.skybox.enabled) {
+			// Skybox disable depth testing so it always appears in background
+			rlDisableBackfaceCulling();
+			rlDisableDepthMask();
+
+			DrawModel(skybox, camera.position, 1.0f, WHITE);
+
+			if (!S->config.display.disable_backface_culling) {
+				rlEnableBackfaceCulling();
+			}
+			rlEnableDepthMask();
+		}
+
+		DrawGrid(S->config.display.grid_size, S->config.display.grid_density);
+
+		// Collect label draw info for a second 2D pass
+		LabelInfo labelBuf[S->config.display.max_labels];
+		int labelCount = 0;
+
+		Vector3 cam_forward = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+
+		// TODO: LOOK AT .operation!!!!
+		const float invScale = 1.0f / (float)S->config.display.space_rendering.space_render_scale; // World -> render scale once
+
+		for (size_t i = 0; i < nbodies; i++) {
+			Vector3 render_pos = {
+				(float)bodies[i].pos[0] * invScale,
+				(float)bodies[i].pos[1] * invScale,
+				(float)bodies[i].pos[2] * invScale
+			};
+
+			Color c = (Color){ S->colors[i][0], S->colors[i][1], S->colors[i][2], 255 };
+
+			if (S->config.display.body_rendering.enabled) {
+				float body_render_scale = (float)S->config.display.body_rendering.body_render_scale;
+				float min_body_size = (float)S->config.display.body_rendering.min_body_size;
+				float max_body_size = (float)S->config.display.body_rendering.max_body_size;
+
+				float radius = S->config.display.body_rendering.operation == SCALE_MULTIPLY ? (float)bodies[i].radius * body_render_scale : (float)bodies[i].radius / body_render_scale;
+				radius = Clamp(radius, min_body_size, max_body_size);
+				DrawSphere(render_pos, radius, c);
+			}
+
+			Vector3 cam_sim;
+			if (S->config.display.body_labels.show_distance_to_floating_origin) {
+				double space_render_scale = S->config.display.space_rendering.space_render_scale;
+				if (S->config.display.space_rendering.operation == SCALE_DIVIDE) {
+					cam_sim = (Vector3) {
+						camera.position.x * space_render_scale,
+						camera.position.y * space_render_scale,
+						camera.position.z * space_render_scale
+					};
+				} else if (S->config.display.space_rendering.operation == SCALE_MULTIPLY) {
+					cam_sim = (Vector3) {
+						camera.position.x / space_render_scale,
+						camera.position.y / space_render_scale,
+						camera.position.z / space_render_scale
+					};
+				} else {
+					fprintf(stderr, "Wrong type for space rendering operation, please use SCALE_MULTIPLY or SCALE_DIVIDE");
+					return;
+				}
+			}
+
+			Vector3 vSim; // So its seen outside the block
+			if (S->config.display.body_labels.show_speed || S->config.display.vector_arrows.enabled || S->config.display.body_labels.show_cardinal_direction) {
+				double to_y = time_conversion_table[TIME_TYPE][S->config.display.time_type_for_labels];
+				vSim = (Vector3) {
+					(float)(bodies[i].vel[0] / to_y),
+					(float)(bodies[i].vel[1] / to_y),
+					(float)(bodies[i].vel[2] / to_y)
+				};
+			}
+
+			if (S->config.display.vector_arrows.enabled) {
+				Vector3 v_render_y = Vector3Scale(vSim, invScale);
+
+				float render_scalar = S->config.time_scale * S->config.physics_tick_step_size_multiplier * S->config.display.vector_arrows.exaggeration_multiplier;
+				if (render_scalar > S->config.display.vector_arrows.max_scalar) render_scalar = S->config.display.vector_arrows.max_scalar;
+
+				Vector3 vRender = Vector3Scale(v_render_y, render_scalar);
+				Vector3 end = Vector3Add(render_pos, vRender);
+
+				DrawLine3D(render_pos, end, c);
+
+				Vector3 dir  = Vector3Normalize(vRender);
+				if (Vector3LengthSqr(dir) > 1e-12f) {
+					Vector3 side = Vector3Normalize(Vector3CrossProduct(dir, camera.up));
+					float ah = S->config.display.vector_arrows.arrow_head_size_percent * Vector3Length(vRender);
+					Vector3 tipL = Vector3Add(end, Vector3Scale(Vector3Add(Vector3Scale(dir,-1), side), ah));
+					Vector3 tipR = Vector3Add(end, Vector3Scale(Vector3Add(Vector3Scale(dir,-1), Vector3Scale(side,-1)), ah));
+					DrawLine3D(end, tipL, c);
+					DrawLine3D(end, tipR, c);
+				}
+			}
+
+			Vector3 to_obj = Vector3Normalize(Vector3Subtract(render_pos, camera.position));
+			float dp = Vector3DotProduct(cam_forward, to_obj);
+			if (dp > 0.0f) {
+
+				char* distance;
+				double dist_AU;
+				if (S->config.display.body_labels.show_distance_to_floating_origin) {
+					// Physical distance :: never apply POS_RENDER_SCALE here!!
+					double dx = (double)bodies[i].pos[0] - (double)cam_sim.x;
+					double dy = (double)bodies[i].pos[1] - (double)cam_sim.y;
+					double dz = (double)bodies[i].pos[2] - (double)cam_sim.z;
+					double dist_sim = sqrt(dx*dx + dy*dy + dz*dz);
+
+					// Convert to AU for display
+					double to_AU   = space_conversion_table[SPACE_TYPE][SPACE_TYPE_AU];
+					dist_AU = dist_sim * to_AU;
+
+					//snprintf(distance);
+				}
+				(void)distance;
+
+				Vector2 sp = GetWorldToScreen(render_pos, camera);
+				int x = (int)sp.x + 8;
+				int y = (int)sp.y - (S->config.display.body_labels.font_size + 2);
+
+				if (labelCount < (int)(sizeof(labelBuf)/sizeof(labelBuf[0]))) {
+					LabelInfo li2 = {
+						.x = x,
+						.y = y,
+						.fs = S->config.display.body_labels.font_size,
+						.text_color = RAYWHITE,
+						.bg_color = (Color){0,0,0,140}
+					};
+					snprintf(li2.text, sizeof(li2.text), "%s  %.3f AU", S->names[i], dist_AU);
+					li2.tw = MeasureText(li2.text, li2.fs);
+					labelBuf[labelCount++] = li2;
+				}
+
+
+				// Speed magnitude in *km/s* (convert sim units -> km, time -> s)
+				double to_x = space_conversion_table[SPACE_TYPE][S->config.display.unit_type_for_labels];
+				double to_y  = time_conversion_table[TIME_TYPE][S->config.display.time_type_for_labels];
+				double vmag  = sqrt((double)bodies[i].vel[0]*bodies[i].vel[0] +
+				(double)bodies[i].vel[1]*bodies[i].vel[1] +
+				(double)bodies[i].vel[2]*bodies[i].vel[2]);
+				double speed_x_y = vmag * (to_x / to_y);
+				(void)speed_x_y;
+
+				// Cardinal from horizontal heading (assume +Z = North, +X = East)
+				float ang = atan2f(vSim.x, vSim.z);  // radians, [-pi,pi], 0 -> North
+				static const char* DIR8[8] = {"N","NE","E","SE","S","SW","W","NW"};
+				int idx = (int)floorf((ang + PI) / (PI/4.0f) + 0.5f) & 7;
+				(void)DIR8;
+				(void)idx;
+
+				// Label near arrow tip  TODO: Combine with the one behind? --> No as this label is not used anyways
+				//Vector2 sp = GetWorldToScreen(end, camera);
+
+				//int fs = 16;
+				//int x = (int)sp.x + 8;
+				//int y = (int)sp.y - (fs + 2);
+
+				//if (labelCount < (int)(sizeof(labelBuf)/sizeof(labelBuf[0]))) {
+				//	LabelInfo li = {
+				//		.x = x,
+				//		.y = y,
+				//		.fs = fs,
+				//		.text_color = RAYWHITE,
+				//		.bg_color = (Color){0,0,0,140}
+				//	};
+				//	snprintf(li.text, sizeof(li.text), "%s  %.2f km/s", DIR8[idx], speed_x_y);
+				//	li.tw = MeasureText(li.text, li.fs);
+					//labelBuf[labelCount++] = li;  // Move to other label
+				//}
+			}
+		}
+
+		EndMode3D();
+
+		for (int k = 0; k < labelCount; k++) {
+			DrawRectangle(labelBuf[k].x-4, labelBuf[k].y-2, labelBuf[k].tw+8, labelBuf[k].fs+6, labelBuf[k].bg_color);
+			DrawText(labelBuf[k].text, labelBuf[k].x, labelBuf[k].y, labelBuf[k].fs, labelBuf[k].text_color);
+		}
+	}
+
+	drawUI(S);
+
+	EndDrawing();
+}
+int guiExit(SimulationState *S) {
+	(void)S;
+	UnloadShader(skybox.materials[0].shader);
+	UnloadTexture(skybox.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture);
+
+	UnloadModel(skybox);        // Unload skybox model
+
+	EnableCursor();
+
+	CloseWindow();
+	return 0;
+}
+#endif
 
 static volatile sig_atomic_t term_exit_requested = 0;
 static void handle_sigint(int sig) {
@@ -582,33 +1159,20 @@ bool termInit(SimulationState *S) {
 }
 
 bool termNeedUpdate(SimulationState *S) {
-	(void)S;
-	static double prev_real = 0.0;
-	static bool initialized = false;
-
-	double now_real = monotonic_time_s();  // e.g., returns time in seconds (double)
-
-	if (!initialized) {
-		prev_real = now_real;
-		initialized = true;
-		return false;
-	}
-
-	double dt_real = now_real - prev_real;
+	double now_real = monotonic_time_s();
+	double dt_real = now_real - S->last_ui_update;
 
 	if (dt_real >= 1.0) {
-		prev_real = now_real;
 		return true;
 	}
-
 	return false;
 }
 
 void termStep(SimulationState *S, BodySnapshot *bodies, size_t nbodies, bool did_update) {
-        if (!did_update) return;
-	printf("t_sim=%zu, nbodies=%zu, loss=%lf%%\n", S->t_sim, nbodies, S->tick_accumulator / 1.0 / S->config.base_physics_dt_sim * S->config.time_scale);
+	if (!did_update && !termNeedUpdate(S)) return;
+	double backlog_percent = (S->tick_accumulator / S->config.time_scale) * 100.0;
+	printf("\nt_sim=%zu, nbodies=%zu, loss=%lf%% / %lf%%\n", S->t_sim, nbodies, backlog_percent, S->config.max_accumulator_backlog);
 	print_bodies(bodies, nbodies);
-	printf("\n");
 }
 
 int termExit(SimulationState *S) {
@@ -618,17 +1182,37 @@ int termExit(SimulationState *S) {
 }
 
 int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_idx, SimulationConfig* cfg) {
-#ifdef SUPPORT_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
-	double G_CONST_SIM = compute_sim_G();  // Convert G_CONST
-#else
-	double G_CONST_SIM = 1.0;
-#endif
-	(void)G_CONST_SIM;
 
-	const char* names[nbodies];
-	uint8_t colors[nbodies][3];
-	BodySnapshot starting_bodies[nbodies];
-	VecT accelerations[nbodies][3];
+	printf("1\n");
+#ifdef SUPPORT_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
+	G_CONST_SIM = compute_sim_G();  // Convert G_CONST
+#else
+	G_CONST_SIM = 1.0;
+#endif
+	//const char* names[nbodies];
+	//uint8_t colors[nbodies][3];
+	//BodySnapshot starting_bodies[nbodies];
+	//VecT accelerations[nbodies][3];
+
+	// 1) Names
+	const char **names = malloc(nbodies * sizeof(*names));
+	if (!names) { fprintf(stderr, "OOM: names\n"); goto fail; }
+
+	// 2) Colors
+	uint8_t (*colors)[3] = malloc(nbodies * sizeof(*colors));
+	if (!colors) { fprintf(stderr, "OOM: colors\n"); goto fail; }
+
+	// 3) Starting snapshots
+	BodySnapshot *starting_bodies = malloc(nbodies * sizeof(*starting_bodies));
+	// If snapshots are optional, consider removing or shrinking this!
+	if (!starting_bodies) { fprintf(stderr, "OOM: starting_bodies\n"); goto fail; }
+
+	// 4) Accelerations
+	// Use calloc to zero-initialize; align if you like for SIMD.
+	VecT (*accelerations)[3] = calloc(nbodies, sizeof(*accelerations));
+	if (!accelerations) { fprintf(stderr, "OOM: accelerations\n"); goto fail; }
+
+	printf("1\n");
 
 	for (size_t i = 0; i < nbodies; i++) {
 		names[i] = bodies[i].name;
@@ -645,24 +1229,25 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 			.mass = (Real)(bodies[i].mass * conversion_mass),
 			.radius = (Real)(bodies[i].radius * conversion_space),
 			.pos = {
-				(VecT)(bodies[i].pos[0] * conversion_space),
-				(VecT)(bodies[i].pos[1] * conversion_space),
-				(VecT)(bodies[i].pos[2] * conversion_space)
+				(PosT)(bodies[i].pos[0] * conversion_space),
+				(PosT)(bodies[i].pos[1] * conversion_space),
+				(PosT)(bodies[i].pos[2] * conversion_space)
 			},
 			.vel = {
 				(VecT)(bodies[i].vel[0] * conversion_space / conversion_time),
 				(VecT)(bodies[i].vel[1] * conversion_space / conversion_time),
 				(VecT)(bodies[i].vel[2] * conversion_space / conversion_time)
-			},
-			// .acc = { 0, 0, 0 }
+			}
 		};
 	}
 
-	print_bodies(starting_bodies, nbodies);
+	printf("1\n");
 
-	(void)cfg;  // Because copying is apparently "not using"
+	// print_bodies(starting_bodies, nbodies);
+
+	(void)cfg;  // Because copying is apparently "not using" it
 	SimulationState S = (SimulationState) {
-		.t_sim = 0,
+		.t_sim = cfg->start_time_sim,
 		.tick_accumulator = 0.0,
 		.paused = false,
 		.body_snapshots_idx = 0,
@@ -670,6 +1255,8 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 		.simulation_step_fn_idx = 0,
 		.simulation_step_fn_count = 0,
 		.simulation_step_fns = NULL,
+
+		.last_ui_update = 0.0,
 
 		.nbodies = nbodies,
 		.names = names,
@@ -767,8 +1354,7 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 	const double tick_interval = 1.0 / S.config.base_physics_dt_sim;
 	bool did_update;
 
-	(void)floating_origin_idx;
-	while (!shouldExit()) {  //// FLOATING ORIGIN
+	while (!shouldExit()) {
 		did_update = false;
 		double now_real = monotonic_time_s();
 		double dt_real = now_real - prev_real;
@@ -780,32 +1366,50 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 
 		if (S.config.time_scale < S.config.time_scale_min) S.config.time_scale = S.config.time_scale_min;
 		if (S.config.time_scale > S.config.time_scale_max) S.config.time_scale = S.config.time_scale_max;
+
+		if (S.config.physics_tick_step_size_multiplier < S.config.min_step_size_mult) S.config.physics_tick_step_size_multiplier = S.config.min_step_size_mult;
+		if (S.config.physics_tick_step_size_multiplier > S.config.max_step_size_mult) S.config.physics_tick_step_size_multiplier = S.config.max_step_size_mult;
+
 		double dt_sim = dt_real * S.config.time_scale;
 
-		S.tick_accumulator += dt_sim;
 		if (S.tick_accumulator > S.config.max_accumulator_backlog) S.tick_accumulator = S.config.max_accumulator_backlog;
 
+		if (!S.paused) {
+			S.tick_accumulator += dt_sim;
 
-		while (!uiNeedUpdate(&S) && S.tick_accumulator >= tick_interval) {  // Only update if enough time has passed (n physics ticks per second)
-			// Copy last frame one forward:
-			BodySnapshot *next = history_clone_for_write(&S.body_snapshots, S.nbodies);  // Maybe just give pointer to current vals and where to write?
+			while (!uiNeedUpdate(&S) && S.tick_accumulator >= tick_interval) {  // Only update if enough time has passed (n physics ticks per second)
+				// Copy last frame one forward:
+				BodySnapshot *next = history_clone_for_write(&S.body_snapshots, S.nbodies);  // Maybe just give pointer to current vals and where to write?
 
-			SimStepFn step = S.simulation_step_fns[S.simulation_step_fn_idx];
-			step(&S, next, S.nbodies, tick_interval * S.config.physics_tick_step_size_multiplier);
-			
-			history_commit(&S.body_snapshots);
-			
-			S.tick_accumulator -= tick_interval;
-			S.simulation_step_fn_idx = (S.simulation_step_fn_idx + 1) % S.simulation_step_fn_count;
-			S.t_sim += 1;
-			did_update = true;
+				SimStepFn step = S.simulation_step_fns[S.simulation_step_fn_idx];
+				step(&S, next, S.nbodies, tick_interval * S.config.physics_tick_step_size_multiplier);
+
+				for (size_t i = 0; i < nbodies; i++) {
+					next[i].pos[0] = next[i].pos[0] - next[floating_origin_idx].pos[0];
+					next[i].pos[1] = next[i].pos[1] - next[floating_origin_idx].pos[1];
+					next[i].pos[2] = next[i].pos[2] - next[floating_origin_idx].pos[2];
+				}
+
+				history_commit(&S.body_snapshots);
+
+				S.tick_accumulator -= tick_interval;
+				S.simulation_step_fn_idx = (S.simulation_step_fn_idx + 1) % S.simulation_step_fn_count;
+				S.t_sim += 1;
+				did_update = true;
+			}
 		}
 
 		size_t last = history_last_index(&S.body_snapshots);
-		BodySnapshot *current_frame = S.body_snapshots.frames
-		? S.body_snapshots.frames[last].buf
-		: starting_bodies; // fallback if no history
-		uiStep(&S, current_frame, S.nbodies, did_update);  // Maybe just give snapshot frame?
+		//BodySnapshot *current_frame = S.body_snapshots.frames
+		//? S.body_snapshots.frames[last].buf
+		//: starting_bodies; // fallback if no history
+
+		BodySnapshot *bodies = S.body_snapshots.frames[last].buf;
+
+		if (uiNeedUpdate(&S)) {
+			uiStep(&S, bodies, S.nbodies, did_update);  // Maybe just give snapshot frame?
+			S.last_ui_update = monotonic_time_s();  // Need to adjust after
+		}
 	}
 
 	for (size_t i = 0; i < S.config.simulations_count; i++) {
@@ -820,5 +1424,17 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 	}
 	free(S.simulation_step_fns);
 
+	free(accelerations);
+	free(starting_bodies);
+	free(colors);
+	free(names);
+
 	return uiExit(&S);
+
+	fail:
+	free(accelerations);
+	free(starting_bodies);
+	free(colors);
+	free(names);
+	return 1;
 }
