@@ -604,6 +604,8 @@ bool guiInit(SimulationState *S) {
 	SetExitKey(0);  // Disable ESC->Exit
 	SetTargetFPS(S->config.display.target_fps);
 
+	GuiLoadStyleDefault();
+	GuiSetFont(GetFontDefault());
 	GuiSetStyle(DEFAULT, TEXT_SIZE, S->config.display.ui.font_size);
 
 	cursorEnabled = true;
@@ -1182,37 +1184,15 @@ int termExit(SimulationState *S) {
 }
 
 int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_idx, SimulationConfig* cfg) {
-
-	printf("1\n");
 #ifdef SUPPORT_EXTREME_BODIES  // The gravitational constant only affects very very large or small bodies
 	G_CONST_SIM = compute_sim_G();  // Convert G_CONST
 #else
 	G_CONST_SIM = 1.0;
 #endif
-	//const char* names[nbodies];
-	//uint8_t colors[nbodies][3];
-	//BodySnapshot starting_bodies[nbodies];
-	//VecT accelerations[nbodies][3];
-
-	// 1) Names
-	const char **names = malloc(nbodies * sizeof(*names));
-	if (!names) { fprintf(stderr, "OOM: names\n"); goto fail; }
-
-	// 2) Colors
-	uint8_t (*colors)[3] = malloc(nbodies * sizeof(*colors));
-	if (!colors) { fprintf(stderr, "OOM: colors\n"); goto fail; }
-
-	// 3) Starting snapshots
-	BodySnapshot *starting_bodies = malloc(nbodies * sizeof(*starting_bodies));
-	// If snapshots are optional, consider removing or shrinking this!
-	if (!starting_bodies) { fprintf(stderr, "OOM: starting_bodies\n"); goto fail; }
-
-	// 4) Accelerations
-	// Use calloc to zero-initialize; align if you like for SIMD.
-	VecT (*accelerations)[3] = calloc(nbodies, sizeof(*accelerations));
-	if (!accelerations) { fprintf(stderr, "OOM: accelerations\n"); goto fail; }
-
-	printf("1\n");
+	const char* names[nbodies];
+	uint8_t colors[nbodies][3];
+	BodySnapshot starting_bodies[nbodies];
+	VecT accelerations[nbodies][3];
 
 	for (size_t i = 0; i < nbodies; i++) {
 		names[i] = bodies[i].name;
@@ -1241,9 +1221,7 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 		};
 	}
 
-	printf("1\n");
-
-	// print_bodies(starting_bodies, nbodies);
+	print_bodies(starting_bodies, nbodies);
 
 	(void)cfg;  // Because copying is apparently "not using" it
 	SimulationState S = (SimulationState) {
@@ -1424,17 +1402,5 @@ int start_simulation(const Body *bodies, size_t nbodies, size_t floating_origin_
 	}
 	free(S.simulation_step_fns);
 
-	free(accelerations);
-	free(starting_bodies);
-	free(colors);
-	free(names);
-
 	return uiExit(&S);
-
-	fail:
-	free(accelerations);
-	free(starting_bodies);
-	free(colors);
-	free(names);
-	return 1;
 }

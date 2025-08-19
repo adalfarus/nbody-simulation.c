@@ -5,8 +5,6 @@
 #include <stdint.h>
 
 enum MassType {
-	MASS_TYPE_MG = 0,
-	MASS_TYPE_G,
 	MASS_TYPE_KG,
 	MASS_TYPE_SOLAR,
 	MASS_TYPE_EARTH,
@@ -14,8 +12,6 @@ enum MassType {
 };
 
 enum SpaceType {
-	SPACE_TYPE_MM = 0,
-	SPACE_TYPE_CM,
 	SPACE_TYPE_M,
 	SPACE_TYPE_KM,
 	SPACE_TYPE_AU,
@@ -24,7 +20,7 @@ enum SpaceType {
 };
 
 enum TimeType {
-	TIME_TYPE_SECOND = 0,
+	TIME_TYPE_SECOND,
 	TIME_TYPE_MINUTE,
 	TIME_TYPE_HOUR,
 	TIME_TYPE_DAY,

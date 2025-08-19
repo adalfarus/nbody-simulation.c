@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <string.h> // memcpy
 
-#include "main.h"  // To get the configuration
+#include "solar_main.h"  // To get the configuration
 #include "nbody_config.h"
 #include "nbody_types.h"
 

@@ -1,29 +1,20 @@
 #include "nbody_config.h"
 
-static const double M_PER_KM   = 1e3;
-static const double M_PER_AU   = 1.496e11;
-static const double M_PER_LY   = 9.461e15;
-static const double KG_PER_SOL = 1.9885e30;
-static const double KG_PER_EAR = 5.9724e24;
-
-// MASS:    TO →   KG             SOLAR                 EARTH                     G                 MG
 const double mass_conversion_table[MASS_TYPE_COUNT][MASS_TYPE_COUNT] = {
-    /* FROM KG     */ { 1.0,           1.0 / KG_PER_SOL,    1.0 / KG_PER_EAR,       1.0e3,           1.0e6 },
-    /* FROM SOLAR  */ { KG_PER_SOL,    1.0,                 KG_PER_SOL / KG_PER_EAR, KG_PER_SOL*1.0e3, KG_PER_SOL*1.0e6 },
-    /* FROM EARTH  */ { KG_PER_EAR,    KG_PER_EAR/KG_PER_SOL, 1.0,                   KG_PER_EAR*1.0e3, KG_PER_EAR*1.0e6 },
-    /* FROM G      */ { 1.0e-3,        1.0e-3 / KG_PER_SOL, 1.0e-3 / KG_PER_EAR,    1.0,             1.0e3 },
-    /* FROM MG     */ { 1.0e-6,        1.0e-6 / KG_PER_SOL, 1.0e-6 / KG_PER_EAR,    1.0e-3,          1.0 }
+    // TO:      KG           SOLAR               EARTH
+    /* KG     */ { 1.0,       1.0 / 1.9885e30,    1.0 / 5.9724e24 },
+    /* SOLAR  */ { 1.9885e30, 1.0,                1.9885e30 / 5.9724e24 },
+    /* EARTH  */ { 5.9724e24, 5.9724e24 / 1.9885e30, 1.0 }
 };
 
-// SPACE:   TO →   M               KM                    AU                       LY                     CM               MM
 const double space_conversion_table[SPACE_TYPE_COUNT][SPACE_TYPE_COUNT] = {
-    /* FROM M   */ { 1.0,           1.0 / M_PER_KM,       1.0 / M_PER_AU,          1.0 / M_PER_LY,       1.0e2,           1.0e3 },
-    /* FROM KM  */ { M_PER_KM,      1.0,                  M_PER_KM / M_PER_AU,     M_PER_KM / M_PER_LY,  1.0e5,           1.0e6 },
-    /* FROM AU  */ { M_PER_AU,      M_PER_AU / M_PER_KM,  1.0,                      M_PER_AU / M_PER_LY,  1.0e2 * M_PER_AU, 1.0e3 * M_PER_AU },
-    /* FROM LY  */ { M_PER_LY,      M_PER_LY / M_PER_KM,  M_PER_LY / M_PER_AU,     1.0,                  1.0e2 * M_PER_LY, 1.0e3 * M_PER_LY },
-    /* FROM CM  */ { 1.0e-2,        1.0e-5,               1.0e-2 / M_PER_AU,       1.0e-2 / M_PER_LY,    1.0,             1.0e1 },
-    /* FROM MM  */ { 1.0e-3,        1.0e-6,               1.0e-3 / M_PER_AU,       1.0e-3 / M_PER_LY,    1.0e-1,          1.0 }
+    // TO:      M             KM           AU             LY
+    /* M   */ { 1.0,          1.0 / 1e3,   1.0 / 1.496e11, 1.0 / 9.461e15 },
+    /* KM  */ { 1e3,          1.0,         1e3 / 1.496e11, 1e3 / 9.461e15 },
+    /* AU  */ { 1.496e11,     1.496e8,     1.0,            1.496e11 / 9.461e15 },
+    /* LY  */ { 9.461e15,     9.461e12,    9.461e15 / 1.496e11, 1.0 }
 };
+
 
 const double time_conversion_table[TIME_TYPE_COUNT][TIME_TYPE_COUNT] = {
     // TO:     SECOND     MINUTE       HOUR         DAY           WEEK         MONTH         YEAR
