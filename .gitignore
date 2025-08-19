@@ -3,3 +3,5 @@
 flake.lock
 *.swp
 .env/
+.idea/
+.vs/
