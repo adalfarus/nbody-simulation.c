@@ -40,7 +40,7 @@
           build () {
             echo "Compiling..."
             clang $CFLAGS \
-              main.c nbody.c nbody_config.c \
+              solar_main.c nbody.c nbody_config.c solar_system_conf.c \
               $(pkg-config --cflags --libs raylib) $LDFLAGS \
               -o nbody.elf
             echo "Build complete."
