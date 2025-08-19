@@ -55,3 +55,9 @@ There are dedicated examples (Solar System and unfinished Dust simulation) on th
 - raygui.h (Download script is included) \[If you define ENABLE_GUI}\]
 
 - unistd.h
+
+# Resources
+
+- Shaders & code for the skybox: https://www.raylib.com/examples/models/loader.html?name=models_skybox
+
+- Skyboxes: https://screamingbrainstudios.itch.io/cloudy-skyboxes-pack
